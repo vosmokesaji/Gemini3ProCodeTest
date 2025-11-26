@@ -241,50 +241,75 @@
             // 这里为了性能简化，只用肢体
         }
 
-        // --- 4. 摄像头与 UI (核心难点：iPhone 支持) ---
+        // --- 4. 摄像头与 UI (支持 Mac 连续互通相机) ---
         async function initCameraSelectionAndUI() {
             const pane = new Pane({ title: 'Control Panel' });
-
-            // A. 获取设备列表
+            
             let cameraOptions = {};
+            let currentStream = null;
+
             try {
-                // 请求一次权限以触发设备枚举
-                await navigator.mediaDevices.getUserMedia({ video: true });
+                // 关键步骤：必须先请求一次 getUserMedia 才能在 enumerateDevices 中获取到设备名称(label)
+                // 否则 label 会是空的
+                currentStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                
+                // 获取设备列表
                 const devices = await navigator.mediaDevices.enumerateDevices();
                 const videoDevices = devices.filter(device => device.kind === 'videoinput');
                 
+                // 填充选项
+                let iphoneFound = false;
                 videoDevices.forEach((device, index) => {
-                    // iPhone 上通常 label 比较清晰，如 "Back Camera", "Front Camera"
+                    // 如果 label 为空，给一个默认名字
                     const label = device.label || `Camera ${index + 1}`;
                     cameraOptions[label] = device.deviceId;
+                    
+                    // 检测 iPhone
+                    if (label.toLowerCase().includes('iphone')) {
+                        iphoneFound = true;
+                    }
                 });
 
-                // 默认选择第一个
+                // 按要求打印日志
+                if (iphoneFound) {
+                    console.log("✅ 成功检测到 iPhone 摄像头 (连续互通相机)");
+                } else {
+                    console.log("ℹ️ 未检测到 iPhone 摄像头。");
+                    console.log("   提示：如需使用，请确保 Mac(Ventura+) 与 iPhone(iOS 16+) 开启蓝牙/WiFi 并登录同一 Apple ID。");
+                }
+
+                // 默认选中策略：
+                // 如果当前 CONFIG.cameraDevice 为空，则默认选第一个
+                // 如果有 iPhone，通常用户可能想优先用 iPhone，也可以在这里逻辑指定
                 if (videoDevices.length > 0) {
+                    // 默认选列表里的第一个设备
                     CONFIG.cameraDevice = videoDevices[0].deviceId;
                 }
+
+                // 释放刚才为了获取权限而打开的流，避免占用
+                currentStream.getTracks().forEach(track => track.stop());
+
             } catch (e) {
-                console.error("Camera access error:", e);
-                loadingElement.innerHTML = "无法访问摄像头<br>请检查浏览器权限";
+                console.error("摄像头权限获取失败:", e);
+                loadingElement.innerHTML = "需要摄像头权限<br>请允许浏览器访问";
             }
 
-            // B. 绑定 UI
+            // --- 构建 UI ---
             const f1 = pane.addFolder({ title: 'System Settings' });
             
-            // 模式切换
             f1.addBinding(CONFIG, 'mode', {
                 options: { Particles: 'Particles', CyberMesh: 'Cyber Mesh' }
             }).on('change', updateVisibility);
 
-            // 摄像头切换
+            // 摄像头下拉菜单
             f1.addBinding(CONFIG, 'cameraDevice', {
                 options: cameraOptions,
                 label: 'Camera Source'
             }).on('change', (ev) => {
+                console.log("切换摄像头 ID:", ev.value);
                 startCamera(ev.value);
             });
 
-            // 镜像开关
             f1.addBinding(CONFIG, 'flipCamera', { label: 'Mirror View' }).on('change', () => {
                 videoElement.style.transform = CONFIG.flipCamera ? "scaleX(-1)" : "scaleX(1)";
             });
@@ -293,15 +318,12 @@
                 videoElement.style.display = ev.value ? 'block' : 'none';
             });
 
-            // 外观调整
-            const f2 = pane.addFolder({ title: 'Appearance' });
-            f2.addBinding(CONFIG, 'bodyColor', { label: 'Particle Color' }).on('change', (ev) => {
+            const f2 = pane.addFolder({ title: 'Visuals' });
+            f2.addBinding(CONFIG, 'bodyColor', { label: 'Color' }).on('change', (ev) => {
                 particleSystem.points.material.color.set(ev.value);
-            });
-            f2.addBinding(CONFIG, 'meshColor', { label: 'Mesh Color' }).on('change', (ev) => {
                 meshAvatar.limbs.forEach(l => l.mesh.material.color.set(ev.value));
             });
-            f2.addBinding(CONFIG, 'bgColor', { label: 'Bg Color' }).on('change', (ev) => {
+            f2.addBinding(CONFIG, 'bgColor', { label: 'Background' }).on('change', (ev) => {
                 scene.background.set(ev.value);
                 scene.fog.color.set(ev.value);
             });
@@ -317,18 +339,21 @@
 
         // --- 5. MediaPipe 与 逻辑 ---
         function initMediaPipe() {
-            // 1. 动态加载 Pose 核心脚本
+            // 先加载 Pose 核心 JS
             const script = document.createElement('script');
             script.src = "https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js";
             script.crossOrigin = "anonymous";
+            
             script.onload = () => {
-                // 2. 动态加载 Camera Utils 脚本
+                // 再加载 Camera Utils
                 const script2 = document.createElement('script');
                 script2.src = "https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js";
                 script2.crossOrigin = "anonymous";
+                
                 script2.onload = () => {
+                    console.log("MediaPipe 脚本加载完成，初始化模型...");
                     
-                    // 3. 脚本都加载好了，现在可以安全使用 new Pose() 了
+                    // 此时全局变量 Pose 已经存在
                     pose = new Pose({
                         locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
                     });
@@ -342,7 +367,7 @@
 
                     pose.onResults(onPoseResults);
 
-                    // 启动摄像头
+                    // 启动默认摄像头
                     startCamera(CONFIG.cameraDevice);
                 };
                 document.body.appendChild(script2);
