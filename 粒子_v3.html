@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rain Control & Telekinesis</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050505; font-family: sans-serif; }
+        canvas { display: block; }
+        
+        /* 摄像头预览窗口 - 初始样式 */
+        #cam-container {
+            position: absolute; bottom: 20px; right: 20px; 
+            width: 240px; height: 180px;
+            border-radius: 12px; overflow: hidden; 
+            border: 2px solid rgba(255,255,255,0.2); 
+            z-index: 90; background: black;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+        #input_video { transform: scaleX(-1); width: 100%; height: 100%; object-fit: cover; }
+        #output_canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: scaleX(-1); }
+
+        /* Loading */
+        #loading {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: #00aaff; font-size: 24px; pointer-events: none; text-shadow: 0 0 10px #00aaff;
+        }
+    </style>
+    
+    <!-- Mediapipe -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <!-- Three.js Import Map -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "tweakpane": "https://cdn.jsdelivr.net/npm/tweakpane@4.0.1/dist/tweakpane.min.js"
+            }
+        }
+    </script>
+</head>
+<body>
+
+    <div id="loading">系统初始化中... 请允许摄像头权限</div>
+
+    <!-- Camera Preview -->
+    <div id="cam-container">
+        <video id="input_video" playsinline></video>
+        <canvas id="output_canvas"></canvas>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { Pane } from 'tweakpane';
+
+        // --- 1. 配置参数 (Params) ---
+        const PARAMS = {
+            rainCount: 10000,
+            rainSpeed: 1.0,
+            rainSize: 0.1,
+            rainColor: '#aaddff',
+            camWidth: 240,
+            camVisible: true,
+            handSensitivity: 2.5, // 手部移动控制雨滴的灵敏度
+            positionSmoothing: 0.1, // 手部位置平滑系数 (0.01 ~ 1.0)
+            jitterThreshold: 0.01, // 抖动过滤阈值
+            status: '等待手势...'
+        };
+
+        // 状态变量
+        const state = {
+            handOpenness: 0, // 0(握拳) ~ 1(张开)
+            prevHandPos: new THREE.Vector3(),
+            currHandPos: new THREE.Vector3(),
+            handVelocity: new THREE.Vector3(),
+            isHandDetected: false,
+            timeScale: 1.0 // 1.0 = 正常下雨, 0.0 = 静止
+        };
+
+        // --- 2. Three.js 场景初始化 ---
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x050505, 0.015); // 深色雾气增加氛围
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(0, 5, 15);
+        camera.lookAt(0, 3, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        // 开启阴影贴图以增强地面效果
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        // --- 3. 环境构建 (地面与灯光) ---
+        
+        // 地面 (模拟积水路面)
+        const planeGeometry = new THREE.PlaneGeometry(100, 100);
+        const planeMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x111111,
+            roughness: 0.1,
+            metalness: 0.8,
+            envMapIntensity: 1.0
+        });
+        const plane = new THREE.Mesh(planeGeometry, planeMaterial);
+        plane.rotation.x = -Math.PI / 2;
+        plane.receiveShadow = true;
+        scene.add(plane);
+
+        // 灯光
+        const ambientLight = new THREE.AmbientLight(0x404040, 2); // 蓝色调环境光
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xaaddff, 2);
+        dirLight.position.set(5, 20, 5);
+        dirLight.castShadow = true;
+        scene.add(dirLight);
+        
+        // 聚光灯模拟路灯效果
+        const spotLight = new THREE.SpotLight(0xffffff, 100);
+        spotLight.position.set(0, 15, 0);
+        spotLight.angle = Math.PI / 6;
+        spotLight.penumbra = 1;
+        scene.add(spotLight);
+
+        // --- 4. 雨滴系统 (Rain System) ---
+        
+        let rainGeo, rainMat, rainSystem;
+        const rainPositions = new Float32Array(PARAMS.rainCount * 3);
+        const rainVelocities = new Float32Array(PARAMS.rainCount); // 每个雨滴的随机速度因子
+
+        function initRain() {
+            rainGeo = new THREE.BufferGeometry();
+            
+            for(let i=0; i<PARAMS.rainCount; i++) {
+                rainPositions[i*3] = (Math.random() - 0.5) * 60; // x
+                rainPositions[i*3+1] = Math.random() * 40;       // y
+                rainPositions[i*3+2] = (Math.random() - 0.5) * 40; // z
+                rainVelocities[i] = 0.5 + Math.random() * 0.5; // 0.5 ~ 1.0
+            }
+
+            rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPositions, 3));
+
+            // 创建雨滴材质 (拉伸的点)
+            rainMat = new THREE.PointsMaterial({
+                color: PARAMS.rainColor,
+                size: PARAMS.rainSize,
+                transparent: true,
+                opacity: 0.8,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                map: createRainTexture()
+            });
+
+            rainSystem = new THREE.Points(rainGeo, rainMat);
+            scene.add(rainSystem);
+        }
+
+        // 动态生成雨滴纹理
+        function createRainTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 32; canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            const grad = ctx.createLinearGradient(0, 0, 0, 64);
+            grad.addColorStop(0, 'rgba(255,255,255,0)');
+            grad.addColorStop(0.5, 'rgba(255,255,255,1)');
+            grad.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, 32, 64);
+            const texture = new THREE.CanvasTexture(canvas);
+            return texture;
+        }
+
+        // --- 5. 涟漪与溅射系统 (Ripples & Splashes) ---
+        // 为了性能，使用对象池技术
+        
+        const MAX_RIPPLES = 200;
+        const ripples = []; 
+        const rippleMeshGroup = new THREE.Group();
+        scene.add(rippleMeshGroup);
+
+        // 涟漪纹理 (圆环)
+        const rippleTexture = (() => {
+            const c = document.createElement('canvas');
+            c.width = 128; c.height = 128;
+            const cx = c.getContext('2d');
+            cx.beginPath();
+            cx.arc(64,64, 50, 0, Math.PI*2);
+            cx.lineWidth = 10;
+            cx.strokeStyle = 'white';
+            cx.stroke();
+            return new THREE.CanvasTexture(c);
+        })();
+
+        // 初始化涟漪池
+        const rippleGeo = new THREE.PlaneGeometry(1, 1);
+        const rippleMat = new THREE.MeshBasicMaterial({ 
+            map: rippleTexture, 
+            transparent: true, 
+            color: 0xaaaaaa,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending 
+        });
+
+        for(let i=0; i<MAX_RIPPLES; i++) {
+            const mesh = new THREE.Mesh(rippleGeo, rippleMat.clone());
+            mesh.rotation.x = -Math.PI/2;
+            mesh.visible = false;
+            rippleMeshGroup.add(mesh);
+            ripples.push({ mesh: mesh, life: 0, active: false });
+        }
+
+        function spawnRipple(x, z) {
+            // 找一个不活跃的涟漪
+            const ripple = ripples.find(r => !r.active);
+            if(ripple) {
+                ripple.active = true;
+                ripple.life = 1.0;
+                ripple.mesh.visible = true;
+                ripple.mesh.position.set(x, 0.05, z);
+                ripple.mesh.scale.set(0, 0, 0);
+                ripple.mesh.material.opacity = 1.0;
+            }
+        }
+
+        function updateRipples(delta) {
+            ripples.forEach(r => {
+                if(r.active) {
+                    r.life -= delta * 2.0; // 消失速度
+                    const scale = (1.0 - r.life) * 2.0; // 扩散大小
+                    r.mesh.scale.set(scale, scale, scale);
+                    r.mesh.material.opacity = r.life;
+                    
+                    if(r.life <= 0) {
+                        r.active = false;
+                        r.mesh.visible = false;
+                    }
+                }
+            });
+        }
+
+        // --- 6. Tweakpane UI 设置 ---
+        const pane = new Pane({ title: '控制面板 (Control Panel)' });
+
+        const tab = pane.addTab({ pages: [ { title: '雨水设置' }, { title: '摄像头设置' } ]});
+
+        // Tab 1: Rain
+        tab.pages[0].addBinding(PARAMS, 'rainSpeed', { min: 0, max: 5, label: '下落速度' });
+        tab.pages[0].addBinding(PARAMS, 'rainSize', { min: 0.05, max: 1.0, label: '雨滴大小' }).on('change', (ev) => {
+            if(rainMat) rainMat.size = ev.value;
+        });
+        tab.pages[0].addBinding(PARAMS, 'rainColor', { label: '雨水颜色' }).on('change', (ev) => {
+            if(rainMat) rainMat.color.set(ev.value);
+            if(rippleMat) rippleMat.color.set(ev.value);
+        });
+        tab.pages[0].addBinding(PARAMS, 'handSensitivity', { min: 1.0, max: 10.0, label: '控雨灵敏度' });
+        tab.pages[0].addBinding(PARAMS, 'positionSmoothing', { min: 0.01, max: 1.0, label: '平滑系数' });
+        tab.pages[0].addBinding(PARAMS, 'jitterThreshold', { min: 0.0, max: 0.1, label: '抖动阈值' });
+        tab.pages[0].addBinding(PARAMS, 'status', { readonly: true, label: '状态' });
+
+        // Tab 2: Camera
+        tab.pages[1].addBinding(PARAMS, 'camWidth', { min: 100, max: 500, step: 10, label: '预览大小' }).on('change', (ev) => {
+            const camDiv = document.getElementById('cam-container');
+            camDiv.style.width = ev.value + 'px';
+            camDiv.style.height = (ev.value * 0.75) + 'px';
+        });
+        tab.pages[1].addBinding(PARAMS, 'camVisible', { label: '显示摄像头' }).on('change', (ev) => {
+            document.getElementById('cam-container').style.display = ev.value ? 'block' : 'none';
+        });
+
+
+        // --- 7. MediaPipe Hands 逻辑 ---
+        
+        const videoElement = document.getElementById('input_video');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+
+        function onResults(results) {
+            document.getElementById('loading').style.display = 'none';
+
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                state.isHandDetected = true;
+                const landmarks = results.multiHandLandmarks[0];
+
+                // 绘制骨架
+                drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#00ccff', lineWidth: 2});
+                drawLandmarks(canvasCtx, landmarks, {color: '#ffffff', lineWidth: 1, radius: 2});
+
+                // 1. 计算手掌张开程度 (用于控制时间/速度)
+                // 简单的算法：计算食指尖(8)到手腕(0)的距离
+                const wrist = landmarks[0];
+                const indexTip = landmarks[8];
+                const middleTip = landmarks[12];
+                
+                // 计算手指伸展的平均距离
+                const distIndex = Math.hypot(indexTip.x - wrist.x, indexTip.y - wrist.y);
+                const distMiddle = Math.hypot(middleTip.x - wrist.x, middleTip.y - wrist.y);
+                const avgDist = (distIndex + distMiddle) / 2;
+
+                // 归一化 (经验值：0.2 为握拳, 0.45 为张开)
+                let openness = (avgDist - 0.2) / 0.25;
+                openness = Math.max(0, Math.min(1, openness));
+                
+                // 平滑插值
+                state.handOpenness += (openness - state.handOpenness) * 0.2;
+
+                // 2. 计算手掌位置 (用于控制移动)
+                // 坐标转换: MediaPipe x/y 是 0~1. 我们需要映射到 Three.js 世界坐标的相对移动量
+                // MediaPipe X 是反的(镜像)，Y 是向下的。
+                // Z 深度可以粗略用 landmark.z 或者手掌大小估计。
+                
+                // 取手掌中心点 (9号点)
+                const palmCenter = landmarks[9]; 
+                
+                // 映射到世界坐标的大致范围 (-1 ~ 1)
+                const targetX = (palmCenter.x - 0.5) * 2; 
+                const targetY = -(palmCenter.y - 0.5) * 2;
+                // z 比较小，通常在 -0.1 到 0.1 之间，需要放大
+                const targetZ = -palmCenter.z * 5; 
+
+                // 平滑插值 (Smoothing)
+                // lerp: current = current + (target - current) * alpha
+                state.currHandPos.x += (targetX - state.currHandPos.x) * PARAMS.positionSmoothing;
+                state.currHandPos.y += (targetY - state.currHandPos.y) * PARAMS.positionSmoothing;
+                state.currHandPos.z += (targetZ - state.currHandPos.z) * PARAMS.positionSmoothing;
+
+                // 计算速度向量 (当前 - 上一帧)
+                const delta = new THREE.Vector3().subVectors(state.currHandPos, state.prevHandPos);
+                
+                // 过滤微小抖动 (Jitter Threshold)
+                if (delta.length() > PARAMS.jitterThreshold) {
+                    state.handVelocity.copy(delta);
+                } else {
+                    state.handVelocity.set(0,0,0);
+                }
+
+                // 更新上一帧位置
+                state.prevHandPos.copy(state.currHandPos);
+
+                // 更新 UI 状态文字
+                if(state.handOpenness > 0.8) {
+                    PARAMS.status = "时间静止 | 可移动";
+                    state.timeScale = 0;
+                } else if (state.handOpenness > 0.3) {
+                    PARAMS.status = "时间变慢";
+                    state.timeScale = 1.0 - state.handOpenness;
+                } else {
+                    PARAMS.status = "正常下雨";
+                    state.timeScale = 1.0;
+                }
+
+            } else {
+                state.isHandDetected = false;
+                state.timeScale = 1.0;
+                PARAMS.status = "未检测到手部";
+            }
+            
+            // 刷新 Tweakpane 显示
+            pane.refresh();
+            canvasCtx.restore();
+        }
+
+        const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+        hands.onResults(onResults);
+
+        const cameraUtils = new Camera(videoElement, {
+            onFrame: async () => { await hands.send({image: videoElement}); },
+            width: 320, height: 240
+        });
+        cameraUtils.start();
+
+        // --- 8. 主循环 (Animation Loop) ---
+        initRain();
+        
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            const delta = clock.getDelta(); // 秒
+            const now = clock.getElapsedTime();
+            
+            // 1. 更新雨滴逻辑
+            const positions = rainGeo.attributes.position.array;
+            
+            // 基础下落速度
+            const baseSpeed = PARAMS.rainSpeed * 40 * delta;
+            // 实际应用速度 (受手势控制)
+            const currentSpeed = baseSpeed * state.timeScale;
+
+            // 手势位移向量 (仅当时间静止/悬浮时生效)
+            // 手势位移向量 (仅当时间静止/悬浮时生效)
+            // 反转 X 轴因为摄像头是镜像的
+            // 降低倍率以防止移出屏幕
+            const moveX = -state.handVelocity.x * PARAMS.handSensitivity * 10; // 20 -> 10
+            const moveY = state.handVelocity.y * PARAMS.handSensitivity * 10;  // 20 -> 10
+            const moveZ = state.handVelocity.z * PARAMS.handSensitivity * 25;  // 50 -> 25 
+
+            for(let i=0; i<PARAMS.rainCount; i++) {
+                const idx = i*3;
+                
+                // 如果时间静止 (handOpenness 接近 1)，应用手部移动
+                if (state.timeScale < 0.1 && state.isHandDetected) {
+                    // 跟随手部移动 (Telekinesis)
+                    positions[idx] += moveX;
+                    positions[idx+1] += moveY;
+                    positions[idx+2] += moveZ;
+                } else {
+                    // 正常下落逻辑
+                    // y -= speed * randomFactor
+                    positions[idx+1] -= currentSpeed * rainVelocities[i];
+                }
+
+                // 边界检测与重置
+                if (positions[idx+1] < 0) {
+                    // 落地了
+                    if (state.timeScale > 0.01) {
+                        // 仅在雨水流动时产生涟漪
+                        // 偶尔产生涟漪以节省性能
+                        if(Math.random() > 0.7) {
+                            spawnRipple(positions[idx], positions[idx+2]);
+                        }
+                    }
+
+                    // 重置到顶部 (仅当不是完全静止时，或者强制循环)
+                    // 如果被手控制移除了边界，也要循环回来
+                    if (state.timeScale > 0.01) {
+                         positions[idx+1] = 40;
+                         positions[idx] = (Math.random() - 0.5) * 60;
+                         positions[idx+2] = (Math.random() - 0.5) * 40;
+                    } else if (positions[idx+1] < -5) {
+                         // 即使悬浮，如果被拖到地底下太深，也循环上去
+                         positions[idx+1] = 40;
+                    }
+                }
+            }
+            rainGeo.attributes.position.needsUpdate = true;
+
+            // 2. 更新涟漪
+            updateRipples(delta);
+
+            // 3. 渲染
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        // 窗口大小调整
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+    </script>
+</body>
+</html>

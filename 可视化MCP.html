@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src * 'unsafe-inline' 'unsafe-eval'; style-src * 'unsafe-inline';">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>可视化 MCP：到底是什么鬼？</title>
+    <!-- 加载 React 和 Babel -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- 加载 Tailwind -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+        body { background-color: #0f172a; color: #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        .glass { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .node { transition: all 0.5s ease; }
+        /* 简单的动画定义 */
+        @keyframes flow {
+            0% { stroke-dashoffset: 20; }
+            100% { stroke-dashoffset: 0; }
+        }
+        .animate-flow {
+            stroke-dasharray: 10;
+            animation: flow 1s linear infinite;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // 修复点：使用 Fragment (<>...</>) 包裹多个 SVG 路径
+        const Icons = {
+            Cpu: <path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5h14v14H5zM9 9h6v6H9z"/>,
+            Server: <path d="M2 12h20M2 12v6a2 2 0 0 1-2 2h24a2 2 0 0 1-2-2v-6M2 12V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v6M6 6h.01M6 18h.01"/>,
+            User: <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>,
+            Zap: <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>,
+            ArrowRight: <path d="M5 12h14M12 5l7 7-7 7"/>,
+            Check: <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4L12 14.01l-3-3"/>,
+            // 这里之前报错，现在加了 <> ... </> 包裹
+            X: <><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></>,
+            Github: <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/>
+        };
+
+        const Icon = ({ name, size = 24, className = "" }) => (
+            <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                width={size} 
+                height={size} 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2" 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                className={className}
+            >
+                {Icons[name] || <circle cx="12" cy="12" r="10" />}
+            </svg>
+        );
+
+        // 主程序逻辑
+        const App = () => {
+            return (
+                <div className="max-w-4xl mx-auto p-4 md:p-8 space-y-16 pb-32">
+                    <Header />
+                    <SectionWhatIs />
+                    <SectionEvolution />
+                    <InteractiveWorkflow />
+                    <SectionTechStack />
+                    <SectionChak />
+                    <Footer />
+                </div>
+            );
+        };
+
+        const Header = () => (
+            <header className="text-center py-10 space-y-6">
+                <div className="inline-block px-4 py-1 bg-blue-900/30 text-blue-400 rounded-full text-sm font-semibold border border-blue-800">
+                    Model Context Protocol
+                </div>
+                <h1 className="text-4xl md:text-6xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
+                    MCP 到底是个什么鬼？
+                </h1>
+                <p className="text-xl text-slate-400 max-w-2xl mx-auto">
+                    拒绝营销号的忽悠。一个可视化的指南，带你理解让 LLM 长出“手脚”的真实逻辑。
+                </p>
+            </header>
+        );
+
+        const SectionWhatIs = () => (
+            <section className="space-y-6">
+                <h2 className="text-2xl font-bold border-l-4 border-purple-500 pl-4">一、直击本质</h2>
+                <div className="grid md:grid-cols-2 gap-6">
+                    <div className="glass p-6 rounded-xl space-y-4">
+                        <h3 className="text-lg font-semibold text-red-400 flex items-center gap-2">
+                            <Icon name="X" size={20}/> 误区：大家都以为...
+                        </h3>
+                        <p className="text-slate-300">
+                            "MCP 是让模型直接拥有调用外部工具能力的神奇魔法..."<br/>
+                            "MCP 跟上下文 (Context) 关系很大..."
+                        </p>
+                    </div>
+                    <div className="glass p-6 rounded-xl space-y-4">
+                        <h3 className="text-lg font-semibold text-green-400 flex items-center gap-2">
+                            <Icon name="Check" size={20}/> 真相：其实就是...
+                        </h3>
+                        <p className="text-slate-300">
+                            <strong>它更应该叫 TCP (Tool Calling Protocol)</strong>。<br/>
+                            它就是 AI 世界的 <strong>USB 协议</strong>。旨在解决应用与工具之间的“接口标准化”问题。
+                        </p>
+                    </div>
+                </div>
+            </section>
+        );
+
+        const SectionEvolution = () => (
+            <section className="space-y-6">
+                <h2 className="text-2xl font-bold border-l-4 border-blue-500 pl-4">二、为什么要发明它？</h2>
+                <div className="space-y-8">
+                    {/* Before */}
+                    <div className="relative p-6 rounded-xl border border-red-900/50 bg-red-900/10">
+                        <div className="absolute top-0 right-0 px-3 py-1 bg-red-800 text-xs rounded-bl-xl font-bold text-white">没有 MCP 之前 (乱套了)</div>
+                        <div className="flex flex-col md:flex-row items-center gap-8 justify-center mt-4">
+                            <div className="text-center">
+                                <div className="w-16 h-16 bg-blue-600 rounded-lg mx-auto flex items-center justify-center mb-2 text-white"><Icon name="Cpu" /></div>
+                                <div className="font-bold">你的 App</div>
+                            </div>
+                            <div className="flex-1 flex flex-col gap-2 w-full md:w-auto">
+                                <div className="h-2 bg-red-500/50 rounded w-full animate-pulse"></div>
+                                <div className="h-2 bg-red-500/50 rounded w-4/5 animate-pulse delay-75"></div>
+                                <div className="h-2 bg-red-500/50 rounded w-full animate-pulse delay-150"></div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 text-center text-xs">
+                                <div className="p-2 border border-slate-600 rounded">天气 API</div>
+                                <div className="p-2 border border-slate-600 rounded">数据库</div>
+                                <div className="p-2 border border-slate-600 rounded">日历</div>
+                                <div className="p-2 border border-slate-600 rounded">计算器</div>
+                            </div>
+                        </div>
+                        <p className="mt-4 text-sm text-red-200">
+                            痛点：逻辑全写在代码里。换个模型？改代码。工具参数变了？改代码。想复用？重写一遍。
+                        </p>
+                    </div>
+
+                    {/* After */}
+                    <div className="relative p-6 rounded-xl border border-green-900/50 bg-green-900/10">
+                        <div className="absolute top-0 right-0 px-3 py-1 bg-green-800 text-xs rounded-bl-xl font-bold text-white">有了 MCP 之后 (USB模式)</div>
+                        <div className="flex flex-col md:flex-row items-center gap-8 justify-center mt-4">
+                            <div className="text-center">
+                                <div className="w-16 h-16 bg-blue-600 rounded-lg mx-auto flex items-center justify-center mb-2 text-white"><Icon name="Cpu" /></div>
+                                <div className="font-bold">你的 App</div>
+                            </div>
+                            <div className="flex-1 flex items-center justify-center">
+                                <div className="px-6 py-2 bg-green-600 rounded-full font-mono text-sm shadow-lg shadow-green-500/20 z-10 text-white">
+                                    &lt; MCP 协议 /&gt;
+                                </div>
+                                <div className="h-1 bg-green-500 absolute w-1/2 -z-0"></div>
+                            </div>
+                            <div className="text-center">
+                                <div className="w-16 h-16 bg-slate-700 border-2 border-green-500 rounded-lg mx-auto flex items-center justify-center mb-2 text-white"><Icon name="Server" /></div>
+                                <div className="font-bold">MCP Servers</div>
+                                <div className="text-xs text-slate-400">天气 / 股票 / 数据库...</div>
+                            </div>
+                        </div>
+                        <p className="mt-4 text-sm text-green-200">
+                            解耦：你的 App 只对接 MCP 协议。具体的工具逻辑都在 Server 端。即插即用，就像 USB。
+                        </p>
+                    </div>
+                </div>
+            </section>
+        );
+
+        const InteractiveWorkflow = () => {
+            const [step, setStep] = useState(0);
+
+            const steps = [
+                { id: 0, text: "等待用户输入...", active: 'user' },
+                { id: 1, text: "Step 1: 用户发问 '查北京天气并推荐穿衣'。App 将请求整理发给 LLM。", from: 'user', to: 'app', active: 'app' },
+                { id: 2, text: "Step 2: LLM 思考，发现需要查天气。返回 Function Call 指令。", from: 'llm', to: 'app', active: 'llm' },
+                { id: 3, text: "Step 3: App 收到指令，通过 MCP Client 调用天气 MCP Server。", from: 'app', to: 'mcp', active: 'mcp' },
+                { id: 4, text: "Step 4: MCP 返回温度数据 (-10度)。App 将结果发回给 LLM。", from: 'mcp', to: 'app', active: 'app' },
+                { id: 5, text: "Step 5: LLM 收到温度，决定调用穿衣推荐。App 再次请求 MCP。", from: 'llm', to: 'app', active: 'llm' },
+                { id: 6, text: "Step 6: LLM 获得所有信息，生成最终建议：'建议穿貂'。", from: 'app', to: 'user', active: 'user' },
+            ];
+
+            const nextStep = () => setStep(prev => (prev + 1) % steps.length);
+            const reset = () => setStep(0);
+
+            const getNodeClass = (nodeName) => {
+                const isActive = steps[step].active === nodeName || 
+                               (steps[step].to === nodeName) || 
+                               (steps[step].from === nodeName);
+                return `p-4 rounded-xl border-2 flex flex-col items-center justify-center w-24 h-24 md:w-32 md:h-32 bg-slate-800 relative z-10 transition-all duration-300 ${isActive ? 'border-yellow-400 shadow-lg shadow-yellow-500/20 scale-105' : 'border-slate-600 opacity-60'}`;
+            };
+
+            const getLineColor = (s, targetStep) => {
+                return (step === targetStep) ? "#eab308" : "#334155";
+            }
+
+            return (
+                <section className="space-y-6">
+                    <h2 className="text-2xl font-bold border-l-4 border-yellow-500 pl-4">三、交互演示：MCP 到底怎么工作？</h2>
+                    <div className="glass p-1 rounded-2xl overflow-hidden">
+                        <div className="bg-slate-900/80 p-6 md:p-10 min-h-[400px] flex flex-col items-center justify-between relative">
+                            
+                            {/* SVG Lines - connecting the nodes visually */}
+                            <svg className="absolute inset-0 w-full h-full pointer-events-none z-0" style={{top: '0px'}}>
+                                {/* Lines definition */}
+                                {/* User to App */}
+                                <line x1="15%" y1="140" x2="50%" y2="140" 
+                                    stroke={step === 1 || step === 6 ? "#3b82f6" : "#334155"} 
+                                    strokeWidth="4" 
+                                    className={step === 1 || step === 6 ? "animate-flow" : ""}
+                                />
+                                {/* App to LLM */}
+                                <line x1="50%" y1="140" x2="85%" y2="140" 
+                                    stroke={step === 1 || step === 2 || step === 4 || step === 5 ? "#eab308" : "#334155"} 
+                                    strokeWidth="4"
+                                    className={step === 1 || step === 2 || step === 4 || step === 5 ? "animate-flow" : ""} 
+                                />
+                                {/* App to MCP (Vertical) */}
+                                <line x1="50%" y1="190" x2="50%" y2="300" 
+                                    stroke={step === 3 || step === 4 || step === 5 ? "#10b981" : "#334155"} 
+                                    strokeWidth="4" 
+                                    className={step === 3 || step === 4 || step === 5 ? "animate-flow" : ""}
+                                />
+                            </svg>
+
+                            {/* Nodes Layout */}
+                            <div className="flex justify-between w-full max-w-3xl mb-12 relative z-10 mt-8">
+                                <div className={getNodeClass('user')}>
+                                    <Icon name="User" size={32} />
+                                    <span className="mt-2 font-bold">User</span>
+                                </div>
+                                
+                                <div className={getNodeClass('app')}>
+                                    <Icon name="Cpu" size={32} />
+                                    <span className="mt-2 font-bold">App</span>
+                                    <span className="text-[10px] text-slate-400">(Host/Client)</span>
+                                </div>
+
+                                <div className={getNodeClass('llm')}>
+                                    <Icon name="Zap" size={32} />
+                                    <span className="mt-2 font-bold">LLM</span>
+                                    <span className="text-[10px] text-slate-400">(Brain)</span>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-center w-full max-w-3xl relative z-10">
+                                <div className={getNodeClass('mcp')}>
+                                    <Icon name="Server" size={32} />
+                                    <span className="mt-2 font-bold">MCP Server</span>
+                                    <span className="text-[10px] text-slate-400">(Tools)</span>
+                                </div>
+                            </div>
+
+                            {/* Control Panel */}
+                            <div className="w-full mt-12 p-4 bg-slate-800 rounded-xl border border-slate-700 flex flex-col md:flex-row items-center justify-between gap-4 z-20 shadow-xl">
+                                <div className="text-sm md:text-base font-mono text-blue-300 flex-1">
+                                    {steps[step].text}
+                                </div>
+                                <div className="flex gap-2">
+                                    <button onClick={reset} className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm transition-colors">重置</button>
+                                    <button onClick={nextStep} className="px-6 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold flex items-center gap-2 shadow-lg shadow-blue-500/30 transition-all active:scale-95">
+                                        {step === steps.length - 1 ? "重新开始" : "下一步"} <Icon name="ArrowRight" size={16} />
+                                    </button>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </section>
+            );
+        };
+
+        const SectionTechStack = () => (
+            <section className="space-y-6">
+                <h2 className="text-2xl font-bold border-l-4 border-slate-500 pl-4">四、技术栈：分层解析</h2>
+                <div className="grid gap-2 max-w-md mx-auto">
+                    {[
+                        { title: "应用层 (Application)", desc: "FastMCP 装饰器 (@mcp.tool)", color: "bg-purple-600" },
+                        { title: "协议层 (Protocol)", desc: "JSON-RPC 2.0 消息格式", color: "bg-blue-600" },
+                        { title: "传输层 (Transport)", desc: "stdio / sse / http", color: "bg-green-600" },
+                        { title: "网络层 (Network)", desc: "asyncio + aiohttp / IO", color: "bg-slate-600" }
+                    ].map((layer, idx) => (
+                        <div key={idx} className={`${layer.color} p-4 rounded-lg shadow-lg hover:scale-105 transition-transform cursor-default text-white`}>
+                            <div className="font-bold">{layer.title}</div>
+                            <div className="text-xs text-white/80 font-mono">{layer.desc}</div>
+                        </div>
+                    ))}
+                </div>
+                <p className="text-center text-sm text-slate-400">
+                    本质上，MCP 只是给 API 套了一层标准的“马甲”，让调用更统一。
+                </p>
+            </section>
+        );
+
+        const SectionChak = () => (
+            <section className="mt-16 bg-gradient-to-br from-slate-800 to-slate-900 p-8 rounded-2xl border border-slate-700 text-center">
+                <h3 className="text-2xl font-bold mb-4">想要极简体验 MCP？试试 Chak</h3>
+                <p className="text-slate-300 mb-6">
+                    作者开发的极简 LLM Chat SDK，两步代码搞定工具调用。
+                </p>
+                <div className="bg-black/50 p-4 rounded-lg text-left font-mono text-sm text-green-400 overflow-x-auto mb-6 inline-block max-w-full border border-slate-600">
+                    <span className="text-purple-400">from</span> chak <span className="text-purple-400">import</span> Conversation<br/>
+                    <span className="text-purple-400">from</span> chak.mcp <span className="text-purple-400">import</span> Server<br/><br/>
+                    <span className="text-slate-500"># 1. 连接 MCP 工具</span><br/>
+                    tools = <span className="text-yellow-400">await</span> Server(url=<span className="text-blue-300">"..."</span>).tools()<br/>
+                    <span className="text-slate-500"># 2. 开聊，自动调用</span><br/>
+                    conv = Conversation(<span className="text-blue-300">"gpt-4o"</span>, tools=tools)
+                </div>
+                <div>
+                    <a href="https://github.com/zhixiangxue/chak-ai" target="_blank" className="inline-flex items-center gap-2 px-6 py-3 bg-white text-slate-900 rounded-full font-bold hover:bg-slate-200 transition-colors">
+                        <Icon name="Github" size={20} /> View on GitHub
+                    </a>
+                </div>
+            </section>
+        );
+
+        const Footer = () => (
+            <footer className="text-center text-slate-500 text-sm border-t border-slate-800 pt-8">
+                <p>基于文章《MCP 到底是个什么鬼？》可视化制作</p>
+                <p className="mt-2">Thinking: MCP is the USB for AI. Visualization helps demystify the hype.</p>
+            </footer>
+        );
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
