@@ -464,7 +464,22 @@
                     positions[idx+1] -= currentSpeed * rainVelocities[i];
                 }
 
-                // 边界检测与重置
+                // --- 无限雨场逻辑 (Infinite Field) ---
+                // 当粒子超出 X/Z/Y 范围时，从另一侧绕回
+                const rangeX = 60;
+                const rangeZ = 40;
+                const rangeY = 45; // Y轴范围
+                
+                if (positions[idx] > rangeX / 2) positions[idx] -= rangeX;
+                if (positions[idx] < -rangeX / 2) positions[idx] += rangeX;
+                
+                if (positions[idx+2] > rangeZ / 2) positions[idx+2] -= rangeZ;
+                if (positions[idx+2] < -rangeZ / 2) positions[idx+2] += rangeZ;
+
+                // Y轴无限循环 (防止推到太高)
+                if (positions[idx+1] > rangeY) positions[idx+1] -= rangeY;
+
+                // 边界检测与重置 (Y轴落地)
                 if (positions[idx+1] < 0) {
                     // 落地了
                     if (state.timeScale > 0.01) {
