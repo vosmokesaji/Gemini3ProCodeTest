@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Web3D 动作捕捉系统 (多模式+多机位)</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #050505;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            touch-action: none; /* 防止手机滑动屏幕 */
+        }
+
+        #input_video {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            width: 160px; /* 手机上改小一点 */
+            height: 120px;
+            border-radius: 8px;
+            border: 2px solid #333;
+            transform: scaleX(-1);
+            z-index: 10;
+            object-fit: cover;
+            display: block;
+        }
+
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #00ffff;
+            font-size: 18px;
+            text-align: center;
+            z-index: 100;
+            background: rgba(0,0,0,0.7);
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid #00ffff;
+        }
+        
+        .tp-dfwv {
+            min-width: 280px !important; /* 稍微加宽面板以适应长设备名 */
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 摄像头输入 -->
+    <video id="input_video" playsinline webkit-playsinline muted></video>
+    
+    <!-- 加载提示 -->
+    <div id="loading">
+        正在初始化系统...<br>
+        <span style="font-size:12px; color:#aaa;">请允许摄像头权限 (支持 iPhone)</span>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+                "@mediapipe/pose": "https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js",
+                "@mediapipe/camera_utils": "https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js",
+                "tweakpane": "https://cdn.jsdelivr.net/npm/tweakpane@4.0.1/dist/tweakpane.min.js"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { Pane } from 'tweakpane';
+        
+        // --- 配置与状态 ---
+        const CONFIG = {
+            mode: 'Particles', // 'Particles' or 'Cyber Mesh'
+            cameraDevice: '',  // 当前选中的摄像头ID
+            flipCamera: true,  // 镜像画面
+            
+            // 粒子参数
+            bodyColor: '#00ffff',
+            particleSize: 0.15,
+            
+            // 模型参数
+            meshColor: '#ff0055',
+            jointColor: '#ffffff',
+            
+            // 环境
+            bgColor: '#050505',
+            showVideo: true,
+        };
+
+        let scene, camera, renderer, controls;
+        let pose, cameraUtils;
+        
+        // 粒子系统对象
+        let particleSystem = { points: null, geometry: null };
+        // 实体模型对象 (存放一组 Mesh)
+        let meshAvatar = { group: new THREE.Group(), limbs: [] };
+        
+        // MediaPipe 连接定义
+        const CONNECTIONS = [
+            [11, 12], [11, 13], [13, 15], [12, 14], [14, 16], // 手臂
+            [11, 23], [12, 24], [23, 24], // 躯干
+            [23, 25], [24, 26], [25, 27], [26, 28], // 腿
+            [27, 29], [28, 30], [29, 31], [30, 32]  // 脚
+        ];
+
+        // 全局 DOM
+        const videoElement = document.getElementById('input_video');
+        const loadingElement = document.getElementById('loading');
+
+        // --- 初始化入口 ---
+        async function init() {
+            initThree();
+            initBackground();
+            
+            // 1. 初始化两种表现形式
+            initParticleSystem();
+            initMeshAvatar(); // 新增：初始化实体模型
+            
+            // 2. 初始化 UI (需要等待摄像头列表)
+            await initCameraSelectionAndUI();
+
+            // 3. 启动 AI
+            initMediaPipe();
+            
+            animate();
+        }
+
+        // --- 1. Three.js 基础 ---
+        function initThree() {
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(CONFIG.bgColor, 0.02);
+            scene.background = new THREE.Color(CONFIG.bgColor);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+            camera.position.set(0, 1, 3.5);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            document.body.appendChild(renderer.domElement);
+
+            // 添加灯光 (为了实体模型)
+            const ambLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambLight);
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+            dirLight.position.set(2, 5, 5);
+            scene.add(dirLight);
+
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+        }
+
+        function initBackground() {
+            const geometry = new THREE.BufferGeometry();
+            const count = 800;
+            const pos = new Float32Array(count * 3);
+            for(let i=0; i<count*3; i++) pos[i] = (Math.random()-0.5)*25;
+            geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+            const material = new THREE.PointsMaterial({ size: 0.05, color: 0x555555 });
+            const stars = new THREE.Points(geometry, material);
+            scene.add(stars);
+        }
+
+        // --- 2. 粒子模式系统 ---
+        function initParticleSystem() {
+            const geometry = new THREE.BufferGeometry();
+            const count = 1500;
+            const positions = new Float32Array(count * 3);
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+            // 简单发光贴图
+            const canvas = document.createElement('canvas');
+            canvas.width = 32; canvas.height = 32;
+            const ctx = canvas.getContext('2d');
+            const g = ctx.createRadialGradient(16,16,0,16,16,16);
+            g.addColorStop(0,'rgba(255,255,255,1)');
+            g.addColorStop(1,'rgba(0,0,0,0)');
+            ctx.fillStyle = g; ctx.fillRect(0,0,32,32);
+            const tex = new THREE.Texture(canvas);
+            tex.needsUpdate = true;
+
+            const material = new THREE.PointsMaterial({
+                color: CONFIG.bodyColor,
+                size: CONFIG.particleSize,
+                map: tex,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false
+            });
+
+            particleSystem.points = new THREE.Points(geometry, material);
+            particleSystem.geometry = geometry;
+            scene.add(particleSystem.points);
+        }
+
+        // --- 3. 实体模型系统 (Cyber Mesh) ---
+        function initMeshAvatar() {
+            scene.add(meshAvatar.group);
+            meshAvatar.group.visible = false;
+
+            // 我们为 CONNECTIONS 中的每一段骨骼创建一个 Cylinder/Box
+            CONNECTIONS.forEach((pair, index) => {
+                // 创建肢体 (圆柱体)
+                const geometry = new THREE.CylinderGeometry(0.05, 0.03, 1, 8);
+                geometry.rotateX(Math.PI / 2); // 旋转几何体，使其沿着 Z 轴，方便 lookAt
+                
+                const material = new THREE.MeshStandardMaterial({ 
+                    color: CONFIG.meshColor, 
+                    roughness: 0.4,
+                    metalness: 0.8,
+                    emissive: 0x220011
+                });
+                
+                const mesh = new THREE.Mesh(geometry, material);
+                mesh.castShadow = true;
+                
+                meshAvatar.group.add(mesh);
+                
+                // 存储引用，以便 update 时调用
+                meshAvatar.limbs.push({
+                    mesh: mesh,
+                    startIdx: pair[0],
+                    endIdx: pair[1]
+                });
+            });
+
+            // 添加关节球体 (可选，增加细节)
+            // 这里为了性能简化，只用肢体
+        }
+
+        // --- 4. 摄像头与 UI (核心难点：iPhone 支持) ---
+        async function initCameraSelectionAndUI() {
+            const pane = new Pane({ title: 'Control Panel' });
+
+            // A. 获取设备列表
+            let cameraOptions = {};
+            try {
+                // 请求一次权限以触发设备枚举
+                await navigator.mediaDevices.getUserMedia({ video: true });
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoDevices = devices.filter(device => device.kind === 'videoinput');
+                
+                videoDevices.forEach((device, index) => {
+                    // iPhone 上通常 label 比较清晰，如 "Back Camera", "Front Camera"
+                    const label = device.label || `Camera ${index + 1}`;
+                    cameraOptions[label] = device.deviceId;
+                });
+
+                // 默认选择第一个
+                if (videoDevices.length > 0) {
+                    CONFIG.cameraDevice = videoDevices[0].deviceId;
+                }
+            } catch (e) {
+                console.error("Camera access error:", e);
+                loadingElement.innerHTML = "无法访问摄像头<br>请检查浏览器权限";
+            }
+
+            // B. 绑定 UI
+            const f1 = pane.addFolder({ title: 'System Settings' });
+            
+            // 模式切换
+            f1.addBinding(CONFIG, 'mode', {
+                options: { Particles: 'Particles', CyberMesh: 'Cyber Mesh' }
+            }).on('change', updateVisibility);
+
+            // 摄像头切换
+            f1.addBinding(CONFIG, 'cameraDevice', {
+                options: cameraOptions,
+                label: 'Camera Source'
+            }).on('change', (ev) => {
+                startCamera(ev.value);
+            });
+
+            // 镜像开关
+            f1.addBinding(CONFIG, 'flipCamera', { label: 'Mirror View' }).on('change', () => {
+                videoElement.style.transform = CONFIG.flipCamera ? "scaleX(-1)" : "scaleX(1)";
+            });
+
+            f1.addBinding(CONFIG, 'showVideo', { label: 'Show Input' }).on('change', (ev) => {
+                videoElement.style.display = ev.value ? 'block' : 'none';
+            });
+
+            // 外观调整
+            const f2 = pane.addFolder({ title: 'Appearance' });
+            f2.addBinding(CONFIG, 'bodyColor', { label: 'Particle Color' }).on('change', (ev) => {
+                particleSystem.points.material.color.set(ev.value);
+            });
+            f2.addBinding(CONFIG, 'meshColor', { label: 'Mesh Color' }).on('change', (ev) => {
+                meshAvatar.limbs.forEach(l => l.mesh.material.color.set(ev.value));
+            });
+            f2.addBinding(CONFIG, 'bgColor', { label: 'Bg Color' }).on('change', (ev) => {
+                scene.background.set(ev.value);
+                scene.fog.color.set(ev.value);
+            });
+
+            updateVisibility();
+        }
+
+        function updateVisibility() {
+            const isParticle = CONFIG.mode === 'Particles';
+            particleSystem.points.visible = isParticle;
+            meshAvatar.group.visible = !isParticle;
+        }
+
+        // --- 5. MediaPipe 与 逻辑 ---
+        function initMediaPipe() {
+            // 1. 动态加载 Pose 核心脚本
+            const script = document.createElement('script');
+            script.src = "https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js";
+            script.crossOrigin = "anonymous";
+            script.onload = () => {
+                // 2. 动态加载 Camera Utils 脚本
+                const script2 = document.createElement('script');
+                script2.src = "https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js";
+                script2.crossOrigin = "anonymous";
+                script2.onload = () => {
+                    
+                    // 3. 脚本都加载好了，现在可以安全使用 new Pose() 了
+                    pose = new Pose({
+                        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+                    });
+
+                    pose.setOptions({
+                        modelComplexity: 1,
+                        smoothLandmarks: true,
+                        minDetectionConfidence: 0.5,
+                        minTrackingConfidence: 0.5
+                    });
+
+                    pose.onResults(onPoseResults);
+
+                    // 启动摄像头
+                    startCamera(CONFIG.cameraDevice);
+                };
+                document.body.appendChild(script2);
+            };
+            document.body.appendChild(script);
+        }
+
+        // 启动特定摄像头的函数
+        function startCamera(deviceId) {
+            if (cameraUtils) {
+                cameraUtils.stop(); // 停止旧流
+            }
+
+            // 构建约束条件
+            const constraints = {
+                width: { ideal: 640 },
+                height: { ideal: 480 },
+                deviceId: deviceId ? { exact: deviceId } : undefined
+            };
+
+            // 使用 MediaPipe 的 Camera Utils 或者 原生 getUserMedia
+            // 这里为了方便切换 DeviceID，我们手动控制 video 标签的流，然后传给 Pose
+            
+            navigator.mediaDevices.getUserMedia({ video: constraints }).then((stream) => {
+                videoElement.srcObject = stream;
+                videoElement.play();
+                loadingElement.style.display = 'none';
+
+                // 简单的帧循环将视频送入 AI
+                const sendFrame = async () => {
+                    if(!videoElement.paused && !videoElement.ended) {
+                        await pose.send({ image: videoElement });
+                    }
+                    requestAnimationFrame(sendFrame);
+                };
+                sendFrame();
+
+            }).catch(err => {
+                console.error("Stream Start Error:", err);
+                loadingElement.innerHTML = "摄像头启动失败: " + err.name;
+            });
+        }
+
+        function onPoseResults(results) {
+            if (!results.poseLandmarks) return;
+            
+            // 转换 MediaPipe 坐标到 3D 世界坐标
+            // 翻转 X 配合镜像
+            const landmarks = results.poseLandmarks.map(lm => {
+                const x = (lm.x - 0.5) * (CONFIG.flipCamera ? -4 : 4); 
+                const y = (lm.y - 0.5) * -3;
+                const z = lm.z * -1; // 适当缩放深度
+                return new THREE.Vector3(x, y, z);
+            });
+
+            if (CONFIG.mode === 'Particles') {
+                updateParticles(landmarks);
+            } else {
+                updateMeshAvatar(landmarks);
+            }
+        }
+
+        // --- 更新逻辑: 粒子 ---
+        function updateParticles(landmarks) {
+            const positions = particleSystem.geometry.attributes.position.array;
+            let pIndex = 0;
+            const particlesPerBone = Math.floor(positions.length / 3 / CONNECTIONS.length);
+
+            CONNECTIONS.forEach(([startIdx, endIdx]) => {
+                const start = landmarks[startIdx];
+                const end = landmarks[endIdx];
+                
+                // 简单的体积插值
+                for(let i=0; i<particlesPerBone; i++) {
+                    const t = Math.random();
+                    const jitter = 0.08; 
+                    positions[pIndex++] = start.x + (end.x - start.x)*t + (Math.random()-0.5)*jitter;
+                    positions[pIndex++] = start.y + (end.y - start.y)*t + (Math.random()-0.5)*jitter;
+                    positions[pIndex++] = start.z + (end.z - start.z)*t + (Math.random()-0.5)*jitter;
+                }
+            });
+            particleSystem.geometry.attributes.position.needsUpdate = true;
+        }
+
+        // --- 更新逻辑: 实体模型 ---
+        function updateMeshAvatar(landmarks) {
+            meshAvatar.limbs.forEach(limb => {
+                const p1 = landmarks[limb.startIdx];
+                const p2 = landmarks[limb.endIdx];
+
+                // 1. 位置：两点中点
+                const mid = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
+                limb.mesh.position.copy(mid);
+
+                // 2. 旋转：LookAt (使圆柱体Z轴对齐骨骼方向)
+                limb.mesh.lookAt(p2);
+
+                // 3. 缩放：长度适配距离
+                const dist = p1.distanceTo(p2);
+                limb.mesh.scale.set(1, 1, dist); // 因为圆柱体初始旋转了，现在Z轴代表长度
+            });
+            
+            // 简单模拟头部 (基于鼻子)
+            // 你可以额外加一个 Sphere 代表头，这里为保持代码简洁略过，
+            // 或者利用 landmarks[0] (Nose) 的位置
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // 启动
+        init();
+
+    </script>
+</body>
+</html>
