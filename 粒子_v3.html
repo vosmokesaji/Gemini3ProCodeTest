@@ -39,6 +39,7 @@
         {
             "imports": {
                 "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
                 "tweakpane": "https://cdn.jsdelivr.net/npm/tweakpane@4.0.1/dist/tweakpane.min.js"
             }
         }
@@ -56,6 +57,7 @@
 
     <script type="module">
         import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import { Pane } from 'tweakpane';
 
         // --- 1. 配置参数 (Params) ---
@@ -64,11 +66,16 @@
             rainSpeed: 1.0,
             rainSize: 0.1,
             rainColor: '#aaddff',
-            camWidth: 240,
+            camWidth: 140,
             camVisible: true,
             handSensitivity: 2.5, // 手部移动控制雨滴的灵敏度
-            positionSmoothing: 0.1, // 手部位置平滑系数 (0.01 ~ 1.0)
+            positionSmoothing: 0.9, // 平滑系数: 0(无平滑) ~ 0.99(极度平滑)
             jitterThreshold: 0.01, // 抖动过滤阈值
+            // Camera View Params
+            viewPosX: 0,
+            viewPosY: 5,
+            viewPosZ: 23,
+            viewTargetY: 5,
             status: '等待手势...'
         };
 
@@ -87,15 +94,44 @@
         scene.fog = new THREE.FogExp2(0x050505, 0.015); // 深色雾气增加氛围
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
-        camera.position.set(0, 5, 15);
-        camera.lookAt(0, 3, 0);
-
+        
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(window.devicePixelRatio);
         // 开启阴影贴图以增强地面效果
         renderer.shadowMap.enabled = true;
         document.body.appendChild(renderer.domElement);
+
+        // --- OrbitControls ---
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.target.set(0, PARAMS.viewTargetY, 0);
+
+        // Sync: UI -> Camera/Controls
+        function updateCamera() {
+            // 如果是 UI 触发的更新，我们更新 controls 的目标
+            controls.target.y = PARAMS.viewTargetY;
+            
+            camera.position.set(PARAMS.viewPosX, PARAMS.viewPosY, PARAMS.viewPosZ);
+            camera.lookAt(0, PARAMS.viewTargetY, 0);
+            controls.update();
+        }
+        
+        // 初始化相机位置
+        camera.position.set(PARAMS.viewPosX, PARAMS.viewPosY, PARAMS.viewPosZ);
+        controls.update();
+
+        // Sync: OrbitControls -> UI
+        controls.addEventListener('change', () => {
+            // 我们手动更新 PARAMS
+            PARAMS.viewPosX = camera.position.x;
+            PARAMS.viewPosY = camera.position.y;
+            PARAMS.viewPosZ = camera.position.z;
+            
+            // 刷新 UI 显示
+            pane.refresh();
+        });
 
         // --- 3. 环境构建 (地面与灯光) ---
         
@@ -250,7 +286,7 @@
         const tab = pane.addTab({ pages: [ { title: '雨水设置' }, { title: '摄像头设置' } ]});
 
         // Tab 1: Rain
-        tab.pages[0].addBinding(PARAMS, 'rainSpeed', { min: 0, max: 5, label: '下落速度' });
+        tab.pages[0].addBinding(PARAMS, 'rainSpeed', { min: 0.1, max: 5, label: '下落速度' });
         tab.pages[0].addBinding(PARAMS, 'rainSize', { min: 0.05, max: 1.0, label: '雨滴大小' }).on('change', (ev) => {
             if(rainMat) rainMat.size = ev.value;
         });
@@ -258,8 +294,8 @@
             if(rainMat) rainMat.color.set(ev.value);
             if(rippleMat) rippleMat.color.set(ev.value);
         });
-        tab.pages[0].addBinding(PARAMS, 'handSensitivity', { min: 1.0, max: 10.0, label: '控雨灵敏度' });
-        tab.pages[0].addBinding(PARAMS, 'positionSmoothing', { min: 0.01, max: 1.0, label: '平滑系数' });
+        tab.pages[0].addBinding(PARAMS, 'handSensitivity', { min: 0.1, max: 5.0, label: '控雨灵敏度' });
+        tab.pages[0].addBinding(PARAMS, 'positionSmoothing', { min: 0.0, max: 0.98, label: '平滑系数' });
         tab.pages[0].addBinding(PARAMS, 'jitterThreshold', { min: 0.0, max: 0.1, label: '抖动阈值' });
         tab.pages[0].addBinding(PARAMS, 'status', { readonly: true, label: '状态' });
 
@@ -272,6 +308,12 @@
         tab.pages[1].addBinding(PARAMS, 'camVisible', { label: '显示摄像头' }).on('change', (ev) => {
             document.getElementById('cam-container').style.display = ev.value ? 'block' : 'none';
         });
+
+        const camFolder = tab.pages[1].addFolder({ title: '视角设置 (View Settings)' });
+        camFolder.addBinding(PARAMS, 'viewPosX', { min: -50, max: 50, label: '相机 X' }).on('change', updateCamera);
+        camFolder.addBinding(PARAMS, 'viewPosY', { min: 0, max: 50, label: '相机 Y' }).on('change', updateCamera);
+        camFolder.addBinding(PARAMS, 'viewPosZ', { min: 0, max: 50, label: '相机 Z' }).on('change', updateCamera);
+        camFolder.addBinding(PARAMS, 'viewTargetY', { min: 0, max: 20, label: '视点高度' }).on('change', updateCamera);
 
 
         // --- 7. MediaPipe Hands 逻辑 ---
@@ -328,15 +370,17 @@
 
                 // 平滑插值 (Smoothing)
                 // lerp: current = current + (target - current) * alpha
-                state.currHandPos.x += (targetX - state.currHandPos.x) * PARAMS.positionSmoothing;
-                state.currHandPos.y += (targetY - state.currHandPos.y) * PARAMS.positionSmoothing;
-                state.currHandPos.z += (targetZ - state.currHandPos.z) * PARAMS.positionSmoothing;
+                // alpha = 1.0 - smoothing (smoothing 越高, alpha 越小, 变化越慢)
+                const alpha = 1.0 - PARAMS.positionSmoothing;
+                state.currHandPos.x += (targetX - state.currHandPos.x) * alpha;
+                state.currHandPos.y += (targetY - state.currHandPos.y) * alpha;
+                state.currHandPos.z += (targetZ - state.currHandPos.z) * alpha;
 
                 // 计算速度向量 (当前 - 上一帧)
                 const delta = new THREE.Vector3().subVectors(state.currHandPos, state.prevHandPos);
                 
                 // 过滤微小抖动 (Jitter Threshold)
-                if (delta.length() > PARAMS.jitterThreshold) {
+                if (delta.length() > (PARAMS.jitterThreshold / 100)) {
                     state.handVelocity.copy(delta);
                 } else {
                     state.handVelocity.set(0,0,0);
@@ -393,7 +437,7 @@
             const positions = rainGeo.attributes.position.array;
             
             // 基础下落速度
-            const baseSpeed = PARAMS.rainSpeed * 40 * delta;
+            const baseSpeed = PARAMS.rainSpeed * 10 * delta;
             // 实际应用速度 (受手势控制)
             const currentSpeed = baseSpeed * state.timeScale;
 
@@ -401,9 +445,9 @@
             // 手势位移向量 (仅当时间静止/悬浮时生效)
             // 反转 X 轴因为摄像头是镜像的
             // 降低倍率以防止移出屏幕
-            const moveX = -state.handVelocity.x * PARAMS.handSensitivity * 10; // 20 -> 10
-            const moveY = state.handVelocity.y * PARAMS.handSensitivity * 10;  // 20 -> 10
-            const moveZ = state.handVelocity.z * PARAMS.handSensitivity * 25;  // 50 -> 25 
+            const moveX = -state.handVelocity.x * PARAMS.handSensitivity * 5; // 20 -> 10
+            const moveY = state.handVelocity.y * PARAMS.handSensitivity * 5;  // 20 -> 10
+            const moveZ = -state.handVelocity.z * PARAMS.handSensitivity * 2;  // 50 -> 25 
 
             for(let i=0; i<PARAMS.rainCount; i++) {
                 const idx = i*3;
@@ -449,6 +493,7 @@
             updateRipples(delta);
 
             // 3. 渲染
+            controls.update(); // required if damping or autoRotate
             renderer.render(scene, camera);
         }
 
