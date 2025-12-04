@@ -1,0 +1,1749 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSS 进化史 - 交互式演示</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --sidebar-bg: #1e293b;
+            --text-primary: #e2e8f0;
+            --text-secondary: #94a3b8;
+            --accent-color: #38bdf8;
+            --accent-hover: #0ea5e9;
+            --border-color: #334155;
+            --code-bg: #0f172a;
+            --success: #22c55e;
+            --demo-bg: #ffffff;
+            --demo-text: #1e293b;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            height: 100vh;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* Sidebar Styles */
+        aside {
+            width: 300px;
+            background-color: var(--sidebar-bg);
+            border-right: 1px solid var(--border-color);
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            background-color: var(--sidebar-bg);
+            z-index: 10;
+        }
+
+        .sidebar-header h1 {
+            font-size: 1.2rem;
+            font-weight: 700;
+            background: linear-gradient(90deg, var(--accent-color), #a855f7);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .tree-nav {
+            padding: 10px;
+        }
+
+        .nav-group {
+            margin-bottom: 5px;
+        }
+
+        .nav-title {
+            padding: 8px 12px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .nav-title:hover {
+            color: var(--text-primary);
+        }
+
+        .nav-children {
+            padding-left: 12px;
+            display: none;
+            /* Collapsed by default */
+        }
+
+        .nav-children.expanded {
+            display: block;
+        }
+
+        .nav-item {
+            display: block;
+            padding: 8px 12px;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            text-decoration: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-left: 2px solid transparent;
+        }
+
+        .nav-item:hover {
+            background-color: rgba(255, 255, 255, 0.05);
+            color: var(--text-primary);
+        }
+
+        .nav-item.active {
+            background-color: rgba(56, 189, 248, 0.1);
+            color: var(--accent-color);
+            border-left-color: var(--accent-color);
+        }
+
+        /* Main Content */
+        main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .content-header {
+            padding: 20px 30px;
+            border-bottom: 1px solid var(--border-color);
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(10px);
+        }
+
+        .content-header h2 {
+            font-size: 1.8rem;
+            margin-bottom: 5px;
+        }
+
+        .content-header p {
+            color: var(--text-secondary);
+        }
+
+        .playground {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        .controls-panel {
+            width: 320px;
+            background-color: rgba(30, 41, 59, 0.5);
+            border-right: 1px solid var(--border-color);
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .control-group {
+            margin-bottom: 20px;
+        }
+
+        .control-group label {
+            display: block;
+            font-size: 0.85rem;
+            margin-bottom: 8px;
+            color: var(--text-secondary);
+        }
+
+        input[type="range"] {
+            width: 100%;
+            accent-color: var(--accent-color);
+        }
+
+        select,
+        button {
+            width: 100%;
+            padding: 8px;
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        button.active {
+            background: var(--accent-color);
+            color: #fff;
+            border-color: var(--accent-color);
+        }
+
+        .preview-panel {
+            flex: 1;
+            padding: 30px;
+            background-color: #000;
+            background-image:
+                radial-gradient(#333 1px, transparent 1px),
+                radial-gradient(#333 1px, transparent 1px);
+            background-size: 20px 20px;
+            background-position: 0 0, 10px 10px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            overflow: auto;
+        }
+
+        .code-float {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: var(--code-bg);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            font-family: 'Fira Code', monospace;
+            font-size: 0.85rem;
+            color: #a5b4fc;
+            max-width: 400px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+            z-index: 20;
+        }
+
+        /* --- Demo Specific Styles --- */
+
+        /* Flex/Grid Box */
+        .box {
+            background: linear-gradient(135deg, var(--accent-color), #a855f7);
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            border-radius: 8px;
+            font-size: 1.2rem;
+            min-width: 60px;
+            min-height: 60px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        .container-demo {
+            width: 100%;
+            height: 100%;
+            border: 2px dashed rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            padding: 10px;
+            transition: all 0.3s ease;
+        }
+
+        /* 3D Transform */
+        .cube-scene {
+            perspective: 600px;
+        }
+
+        .cube {
+            width: 100px;
+            height: 100px;
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.5s;
+        }
+
+        .cube-face {
+            position: absolute;
+            width: 100px;
+            height: 100px;
+            background: rgba(56, 189, 248, 0.5);
+            border: 2px solid var(--accent-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        /* Glassmorphism */
+        .glass-card {
+            width: 300px;
+            height: 200px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            z-index: 2;
+        }
+
+        .glass-bg-circle {
+            position: absolute;
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            background: var(--accent-color);
+            top: -30px;
+            left: -30px;
+            z-index: 1;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-color);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-secondary);
+        }
+    </style>
+</head>
+
+<body>
+
+    <aside>
+        <div class="sidebar-header">
+            <h1>CSS Evolution</h1>
+            <div style="font-size: 0.7rem; color: var(--text-secondary); margin-top: 5px;">Interactive Roadmap</div>
+        </div>
+        <div class="tree-nav" id="sidebar-content">
+            <!-- Dynamically populated by JS -->
+        </div>
+    </aside>
+
+    <main>
+        <div class="content-header" id="header-area">
+            <h2>欢迎</h2>
+            <p>请点击左侧菜单选择一个 CSS 模块进行交互演示。</p>
+        </div>
+
+        <div class="playground" id="playground-area">
+            <!-- Controls will be injected here -->
+            <div class="controls-panel" id="controls">
+                <p style="color: #666; font-style: italic;">选择功能以加载控制器</p>
+            </div>
+
+            <!-- Preview will be injected here -->
+            <div class="preview-panel" id="preview">
+                <div style="text-align: center; color: var(--text-secondary);">
+                    <div style="font-size: 4rem; margin-bottom: 20px;">🎨</div>
+                    <h3>CSS 模块化演练场</h3>
+                </div>
+                <div class="code-float" id="code-display" style="display: none;">
+                    /* CSS Code will appear here */
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // --- Data Structure (Based on user input) ---
+        const cssMap = [
+            {
+                title: "CSS 版本演进",
+                items: [
+                    { id: "css-timeline", name: "CSS 历史演进", type: "version-timeline" }
+                ]
+            },
+            {
+                title: "选择器 (Selectors)",
+                items: [
+                    { id: "sel-l3", name: "Level 3 (属性/伪类)", type: "sel-l3" },
+                    { id: "sel-l4", name: "Level 4 (:has/:is/:where)", type: "sel-l4" }
+                ]
+            },
+            {
+                title: "颜色 (Color)",
+                items: [
+                    { id: "color-l3", name: "Level 3 (RGBA/HSL/Opacity)", type: "color-l3" },
+                    { id: "color-l4", name: "Level 4 (Color Function)", type: "color-l4" },
+                    { id: "color-l5", name: "Level 5 (Mix/Contrast/LCH)", type: "color-l5" }
+                ]
+            },
+            {
+                title: "布局 (Layout)",
+                items: [
+                    { id: "box-model", name: "盒模型 (Box Model)", type: "layout-box" },
+                    { id: "flexbox", name: "弹性盒子 (Flexbox)", type: "layout-flex" },
+                    { id: "grid", name: "网格布局 (Grid)", type: "layout-grid" },
+                    { id: "multi-col", name: "多列布局 (Multi-column)", type: "layout-multi" }
+                ]
+            },
+            {
+                title: "文本与字体 (Text & Fonts)",
+                items: [
+                    { id: "fonts", name: "字体 (Fonts & Variable)", type: "text-fonts" },
+                    { id: "text-effects", name: "文本效果 (Text Effects)", type: "text-effects" },
+                    { id: "writing-mode", name: "书写模式 (Writing Modes)", type: "text-writing" }
+                ]
+            },
+            {
+                title: "变换与动画",
+                items: [
+                    { id: "transform", name: "变换 (Transform 2D/3D)", type: "anim-transform" },
+                    { id: "transition", name: "过渡 (Transition)", type: "anim-transition" },
+                    { id: "animation", name: "动画 (Keyframes)", type: "anim-keyframes" }
+                ]
+            },
+            {
+                title: "自定义属性与函数",
+                items: [
+                    { id: "vars", name: "CSS 变量 (Variables)", type: "func-vars" },
+                    { id: "math", name: "数学函数 (Calc/Min/Max)", type: "func-math" }
+                ]
+            },
+            {
+                title: "过滤与混合",
+                items: [
+                    { id: "filters", name: "滤镜 (Filters)", type: "effect-filter" },
+                    { id: "blend", name: "混合模式 (Blend Modes)", type: "effect-blend" }
+                ]
+            },
+            {
+                title: "媒体与容器查询",
+                items: [
+                    { id: "media", name: "媒体查询 (Media Queries)", type: "query-media" },
+                    { id: "container", name: "容器查询 (Container Queries)", type: "query-container" }
+                ]
+            },
+            {
+                title: "滚动与视图",
+                items: [
+                    { id: "scroll-snap", name: "滚动捕捉 (Scroll Snap)", type: "scroll-snap" },
+                    { id: "viewport", name: "视口单位 (Viewport Units)", type: "scroll-viewport" }
+                ]
+            },
+            {
+                title: "逻辑属性",
+                items: [
+                    { id: "logical", name: "逻辑属性 (Logical Props)", type: "logical-props" }
+                ]
+            },
+            {
+                title: "其他重要模块",
+                items: [
+                    { id: "layers", name: "层叠层 (@layer)", type: "other-layers" },
+                    { id: "nesting", name: "嵌套 (Nesting)", type: "other-nesting" },
+                    { id: "view-transition", name: "视图过渡 (View Transitions)", type: "other-view-transition" }
+                ]
+            }
+        ];
+
+        // --- Core Application Logic ---
+
+        const sidebarContent = document.getElementById('sidebar-content');
+        const headerArea = document.getElementById('header-area');
+        const controlsPanel = document.getElementById('controls');
+        const previewPanel = document.getElementById('preview');
+        const codeDisplay = document.getElementById('code-display');
+
+        // 1. Render Sidebar
+        function renderSidebar() {
+            cssMap.forEach((group, index) => {
+                const groupDiv = document.createElement('div');
+                groupDiv.className = 'nav-group';
+
+                const title = document.createElement('div');
+                title.className = 'nav-title';
+                title.innerHTML = `${group.title} <span>▼</span>`;
+                title.onclick = () => {
+                    const children = groupDiv.querySelector('.nav-children');
+                    children.classList.toggle('expanded');
+                    title.querySelector('span').textContent = children.classList.contains('expanded') ? '▲' : '▼';
+                };
+
+                const childrenDiv = document.createElement('div');
+                childrenDiv.className = 'nav-children' + (index < 2 ? ' expanded' : ''); // Expand first 2 by default
+
+                group.items.forEach(item => {
+                    const link = document.createElement('a');
+                    link.className = 'nav-item';
+                    link.textContent = item.name;
+                    link.onclick = () => loadDemo(item);
+                    childrenDiv.appendChild(link);
+                });
+
+                groupDiv.appendChild(title);
+                groupDiv.appendChild(childrenDiv);
+                sidebarContent.appendChild(groupDiv);
+            });
+        }
+
+        // 2. Load Demo Router
+        function loadDemo(item) {
+            // Update Active State
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            event.target.classList.add('active');
+
+            // Update Header
+            headerArea.innerHTML = `<h2>${item.name}</h2><p>交互式演示: ${item.id}</p>`;
+            codeDisplay.style.display = 'block';
+
+            // Clear Areas
+            controlsPanel.innerHTML = '';
+            previewPanel.innerHTML = '<div class="code-float" id="code-display"></div>'; // Reset keep code box
+
+            // Re-grab code display ref
+            const codeBox = document.getElementById('code-display');
+
+            // Router Switch
+            switch (item.type) {
+                // Version
+                case 'version-timeline': renderVersionTimeline(codeBox); break;
+
+                // Selectors
+                case 'sel-l3': renderSelectorsL3(codeBox); break;
+                case 'sel-l4': renderSelectorsL4(codeBox); break;
+
+                // Color
+                case 'color-l3': renderColorL3(codeBox); break;
+                case 'color-l4': renderColorL4(codeBox); break;
+                case 'color-l5': renderColorL5(codeBox); break;
+
+                // Layout
+                case 'layout-box': renderBoxModel(codeBox); break;
+                case 'layout-flex': renderFlexDemo(codeBox); break;
+                case 'layout-grid': renderGridDemo(codeBox); break;
+                case 'layout-multi': renderMultiColumn(codeBox); break;
+
+                // Text
+                case 'text-fonts': renderFonts(codeBox); break;
+                case 'text-effects': renderTextEffects(codeBox); break;
+                case 'text-writing': renderWritingModes(codeBox); break;
+
+                // Animation
+                case 'anim-transform': renderTransform(codeBox); break;
+                case 'anim-transition': renderTransition(codeBox); break;
+                case 'anim-keyframes': renderKeyframes(codeBox); break;
+
+                // Functions
+                case 'func-vars': renderVariables(codeBox); break;
+                case 'func-math': renderMathFunctions(codeBox); break;
+
+                // Effects
+                case 'effect-filter': renderFilters(codeBox); break;
+                case 'effect-blend': renderBlendModes(codeBox); break;
+
+                // Queries
+                case 'query-media': renderMediaQueries(codeBox); break;
+                case 'query-container': renderContainerQueries(codeBox); break;
+
+                // Scroll
+                case 'scroll-snap': renderScrollSnap(codeBox); break;
+                case 'scroll-viewport': renderViewportUnits(codeBox); break;
+
+                // Logical
+                case 'logical-props': renderLogicalProps(codeBox); break;
+
+                // Other
+                case 'other-layers': renderLayers(codeBox); break;
+                case 'other-nesting': renderNesting(codeBox); break;
+                case 'other-view-transition': renderViewTransitions(codeBox); break;
+
+                default:
+                    previewPanel.innerHTML += `<div style="color:white; text-align:center; padding-top: 50px;">🚧 此演示正在开发中...<br>(${item.name})</div>`;
+            }
+        }
+
+        // --- Demo Renderers ---
+
+        // DEMO: Version Timeline
+        function renderVersionTimeline(codeBox) {
+            const timelineData = [
+                { year: '1996', ver: 'CSS 1', desc: '基本字体属性、颜色、背景、边距、边框' },
+                { year: '1998', ver: 'CSS 2', desc: '定位 (absolute/relative)、z-index、媒体类型' },
+                { year: '2011', ver: 'CSS 2.1', desc: '修复错误，定义了极其稳定的核心特性' },
+                { year: '1999+', ver: 'CSS 3', desc: '模块化！圆角、阴影、Flexbox、Grid、动画等' },
+                { year: 'Future', ver: 'CSS 4/5', desc: '嵌套、容器查询、作用域、层叠层、新颜色空间' }
+            ];
+
+            const container = document.createElement('div');
+            container.style.display = 'flex';
+            container.style.flexDirection = 'column';
+            container.style.gap = '20px';
+            container.style.width = '100%';
+            container.style.maxWidth = '600px';
+
+            timelineData.forEach((item, index) => {
+                const row = document.createElement('div');
+                row.style.display = 'flex';
+                row.style.alignItems = 'center';
+                row.style.gap = '20px';
+                row.style.opacity = '0';
+                row.style.transform = 'translateX(-20px)';
+                row.style.animation = `fadeInRight 0.5s forwards ${index * 0.2}s`;
+
+                // Add keyframes if not exists
+                if (!document.getElementById('anim-fade')) {
+                    const style = document.createElement('style');
+                    style.id = 'anim-fade';
+                    style.textContent = `@keyframes fadeInRight { to { opacity: 1; transform: translateX(0); } }`;
+                    document.head.appendChild(style);
+                }
+
+                row.innerHTML = `
+                    <div style="font-weight:bold; color:var(--accent-color); width: 80px; text-align:right;">${item.year}</div>
+                    <div style="width: 2px; height: 50px; background: var(--border-color); position: relative;">
+                        <div style="position:absolute; top:50%; left:-4px; width:10px; height:10px; border-radius:50%; background:var(--accent-color); transform:translateY(-50%);"></div>
+                    </div>
+                    <div style="flex:1; background:rgba(255,255,255,0.05); padding:15px; border-radius:8px;">
+                        <div style="font-weight:bold; margin-bottom:5px;">${item.ver}</div>
+                        <div style="font-size:0.9rem; color:var(--text-secondary);">${item.desc}</div>
+                    </div>
+                `;
+                container.appendChild(row);
+            });
+
+            previewPanel.appendChild(container);
+            codeBox.innerText = `/* CSS 发展不再以版本号命名，而是模块化迭代 */\n/* CSS3 之后，我们讨论的是 "Flexbox Level 1", "Grid Level 2" 等 */`;
+        }
+
+        // DEMO: Selectors L3
+        function renderSelectorsL3(codeBox) {
+            const wrapper = document.createElement('div');
+            wrapper.style.display = 'flex';
+            wrapper.style.flexDirection = 'column';
+            wrapper.style.gap = '20px';
+            wrapper.style.width = '100%';
+            wrapper.style.alignItems = 'center';
+
+            // Demo Area
+            const demoArea = document.createElement('div');
+            demoArea.className = 'sel-demo-area';
+            demoArea.style.display = 'flex';
+            demoArea.style.gap = '10px';
+            demoArea.style.padding = '20px';
+            demoArea.style.border = '1px solid var(--border-color)';
+            demoArea.style.borderRadius = '8px';
+
+            const items = [
+                { tag: 'div', text: 'Item 1', attrs: { class: 'item' } },
+                { tag: 'div', text: 'Item 2 (Active)', attrs: { class: 'item active' } },
+                { tag: 'input', text: '', attrs: { type: 'checkbox', checked: true } },
+                { tag: 'input', text: '', attrs: { type: 'text', disabled: true, value: 'Disabled', style: 'width:80px' } },
+                { tag: 'span', text: 'Span[title]', attrs: { title: 'hello', class: 'item' } }
+            ];
+
+            items.forEach(i => {
+                const el = document.createElement(i.tag);
+                el.textContent = i.text;
+                Object.entries(i.attrs).forEach(([k, v]) => {
+                    if (k === 'checked' && v) el.checked = true;
+                    else if (k === 'disabled' && v) el.disabled = true;
+                    else el.setAttribute(k, v);
+                });
+                if (i.tag === 'div' || i.tag === 'span') {
+                    el.style.padding = '10px';
+                    el.style.background = '#334155';
+                    el.style.borderRadius = '4px';
+                }
+                demoArea.appendChild(el);
+            });
+            wrapper.appendChild(demoArea);
+
+            // Controls
+            const btnGroup = document.createElement('div');
+            btnGroup.style.display = 'flex';
+            btnGroup.style.gap = '10px';
+            btnGroup.style.flexWrap = 'wrap';
+
+            const selectors = [
+                { label: ':nth-child(2)', sel: ':nth-child(2)' },
+                { label: '[title]', sel: '[title]' },
+                { label: ':checked', sel: ':checked' },
+                { label: ':disabled', sel: ':disabled' },
+                { label: ':not(input)', sel: ':not(input)' }
+            ];
+
+            selectors.forEach(s => {
+                const btn = document.createElement('button');
+                btn.textContent = s.label;
+                btn.style.width = 'auto';
+                btn.onclick = () => {
+                    // Reset
+                    demoArea.querySelectorAll('*').forEach(el => el.style.outline = 'none');
+                    // Apply
+                    const matched = demoArea.querySelectorAll(s.sel);
+                    matched.forEach(el => el.style.outline = '2px solid var(--success)');
+                    codeBox.innerText = `/* 选中了 ${matched.length} 个元素 */\n${s.sel} {\n  outline: 2px solid var(--success);\n}`;
+                };
+                btnGroup.appendChild(btn);
+            });
+            wrapper.appendChild(btnGroup);
+            previewPanel.appendChild(wrapper);
+            codeBox.innerText = '/* 点击按钮测试选择器 */';
+        }
+
+        // DEMO: Selectors L4
+        function renderSelectorsL4(codeBox) {
+            const wrapper = document.createElement('div');
+            wrapper.style.display = 'flex';
+            wrapper.style.flexDirection = 'column';
+            wrapper.style.gap = '20px';
+
+            // :has() demo
+            const hasBlock = document.createElement('div');
+            hasBlock.innerHTML = `
+                <h3 style="margin-bottom:10px">:has() - 父级选择器</h3>
+                <div class="has-parent" style="padding:15px; border:2px solid #555; border-radius:8px; transition:all 0.3s;">
+                    <div style="margin-bottom:10px">我是父元素 (Parent)</div>
+                    <label style="display:flex; gap:10px; align-items:center;">
+                        <input type="checkbox" class="has-trigger"> 
+                        选中我改变父元素样式
+                    </label>
+                </div>
+            `;
+            wrapper.appendChild(hasBlock);
+
+            // Add style for :has
+            if (!document.getElementById('style-l4')) {
+                const s = document.createElement('style');
+                s.id = 'style-l4';
+                s.textContent = `
+                    .has-parent:has(.has-trigger:checked) {
+                        border-color: var(--accent-color);
+                        background: rgba(56, 189, 248, 0.1);
+                        box-shadow: 0 0 20px rgba(56, 189, 248, 0.2);
+                    }
+                `;
+                document.head.appendChild(s);
+            }
+
+            // :is() / :where() demo
+            const isBlock = document.createElement('div');
+            isBlock.innerHTML = `
+                <h3 style="margin-bottom:10px; margin-top:20px">:is() vs :where()</h3>
+                <div class="is-demo">
+                    <p class="text-p">Paragraph</p>
+                    <span class="text-span">Span</span>
+                    <div class="text-div">Div</div>
+                </div>
+            `;
+            wrapper.appendChild(isBlock);
+
+            previewPanel.appendChild(wrapper);
+
+            codeBox.innerText = `/* :has() 允许根据子元素状态样式化父元素 */
+.parent:has(input:checked) {
+  border-color: var(--accent-color);
+}
+
+/* :is() 简化选择器列表，计算优先级 */
+:is(p, span, div).text-p { color: red; }
+
+/* :where() 优先级总是 0 */
+:where(p, span, div).text-p { color: blue; }`;
+        }
+
+        // DEMO: Color L3
+        function renderColorL3(codeBox) {
+            const container = document.createElement('div');
+            container.style.textAlign = 'center';
+
+            const box = document.createElement('div');
+            box.style.width = '200px';
+            box.style.height = '200px';
+            box.style.background = 'rgba(255, 99, 71, 0.5)';
+            box.style.borderRadius = '50%';
+            box.style.display = 'flex';
+            box.style.alignItems = 'center';
+            box.style.justifyContent = 'center';
+            box.style.margin = '0 auto 20px';
+            box.style.border = '2px solid white';
+            box.innerHTML = 'RGBA / HSLA';
+            container.appendChild(box);
+
+            previewPanel.appendChild(container);
+
+            let alpha = 0.5;
+            createRangeControl('Alpha (Opacity)', 0, 100, 50, '%', val => {
+                alpha = val / 100;
+                update();
+            });
+
+            function update() {
+                box.style.background = `rgba(255, 99, 71, ${alpha})`;
+                codeBox.innerText = `.circle {\n  background: rgba(255, 99, 71, ${alpha});\n  /* or hsla(9, 100%, 64%, ${alpha}) */\n}`;
+            }
+            update();
+        }
+
+        // DEMO: Color L4 (color function)
+        function renderColorL4(codeBox) {
+            const container = document.createElement('div');
+            container.innerHTML = `<div style="margin-bottom:20px">Display P3 广色域 (如果屏幕支持)</div>`;
+
+            const box = document.createElement('div');
+            box.style.width = '200px';
+            box.style.height = '200px';
+            box.style.borderRadius = '12px';
+            box.style.background = 'rgb(0, 255, 0)'; // Fallback
+
+            // Check support
+            if (CSS.supports('color: color(display-p3 1 0 0)')) {
+                box.style.background = 'color(display-p3 0 1 0)';
+                box.innerHTML = '<div style="padding:20px; text-align:center">Super Green!<br>(P3 Gamut)</div>';
+            } else {
+                box.innerHTML = '<div style="padding:20px; text-align:center">Your browser does not support color(display-p3)</div>';
+            }
+
+            container.appendChild(box);
+            previewPanel.appendChild(container);
+
+            codeBox.innerText = `.box {\n  /* Fallback */\n  background: rgb(0, 255, 0);\n  /* P3 Wide Gamut */\n  background: color(display-p3 0 1 0);\n}`;
+        }
+
+        // DEMO: Color L5 (Mix & New Spaces)
+        function renderColorL5(codeBox) {
+            const container = document.createElement('div');
+            container.style.display = 'flex';
+            container.style.flexDirection = 'column';
+            container.style.alignItems = 'center';
+            container.style.gap = '20px';
+
+            const box = document.createElement('div');
+            box.style.width = '200px';
+            box.style.height = '100px';
+            box.style.borderRadius = '8px';
+            box.style.display = 'flex';
+            box.style.alignItems = 'center';
+            box.style.justifyContent = 'center';
+            box.innerText = "color-mix()";
+            container.appendChild(box);
+
+            previewPanel.appendChild(container);
+
+            let percent = 50;
+            let space = 'oklch';
+
+            createRangeControl('Mix % (Blue to Red)', 0, 100, 50, '%', val => {
+                percent = val;
+                update();
+            });
+            createSelectControl('Color Space', ['srgb', 'hsl', 'lch', 'oklch', 'lab'], 'oklch', val => {
+                space = val;
+                update();
+            });
+
+            function update() {
+                if (CSS.supports('color: color-mix(in srgb, blue, red)')) {
+                    const val = `color-mix(in ${space}, blue ${percent}%, red)`;
+                    box.style.backgroundColor = val;
+                    codeBox.innerText = `.box {\n  /* OKLCH is perceptually uniform */\n  background: ${val};\n}`;
+                } else {
+                    box.style.backgroundColor = '#555';
+                    box.innerText = "Browser not supported";
+                }
+            }
+            update();
+        }
+
+        // DEMO: Box Model
+        function renderBoxModel(codeBox) {
+            const container = document.createElement('div');
+            container.style.display = 'flex';
+            container.style.justifyContent = 'center';
+            container.style.alignItems = 'center';
+            container.style.height = '300px';
+
+            const box = document.createElement('div');
+            box.style.width = '200px';
+            box.style.height = '100px';
+            box.style.background = 'var(--accent-color)';
+            box.style.border = '10px solid #a855f7';
+            box.style.padding = '20px';
+            box.style.color = 'white';
+            box.style.fontWeight = 'bold';
+            box.style.display = 'flex';
+            box.style.justifyContent = 'center';
+            box.style.alignItems = 'center';
+            box.innerText = 'Content';
+
+            // Wrapper to show margin
+            const wrapper = document.createElement('div');
+            wrapper.style.border = '1px dashed #666';
+            wrapper.style.background = 'rgba(255,255,255,0.05)';
+            wrapper.appendChild(box);
+
+            container.appendChild(wrapper);
+            previewPanel.appendChild(container);
+
+            let sizing = 'content-box';
+
+            createSelectControl('Box Sizing', ['content-box', 'border-box'], 'content-box', val => {
+                sizing = val;
+                update();
+            });
+
+            function update() {
+                box.style.boxSizing = sizing;
+                codeBox.innerText = `.box {\n  width: 200px;\n  padding: 20px;\n  border: 10px solid ...;\n  box-sizing: ${sizing};\n}`;
+            }
+            update();
+        }
+
+        // DEMO: Multi-column
+        function renderMultiColumn(codeBox) {
+            const container = document.createElement('div');
+            container.className = 'multi-col-demo';
+            container.style.textAlign = 'justify';
+            container.innerHTML = `
+                <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</p>
+                <p>Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</p>
+                <p>Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo.</p>
+            `;
+            previewPanel.appendChild(container);
+
+            let cols = 3;
+            let rule = 'none';
+
+            createRangeControl('Column Count', 1, 5, 3, '', val => {
+                cols = val;
+                update();
+            });
+            createSelectControl('Column Rule', ['none', '1px solid white', '2px dashed red'], 'none', val => {
+                rule = val;
+                update();
+            });
+
+            function update() {
+                container.style.columnCount = cols;
+                container.style.columnGap = '20px';
+                container.style.columnRule = rule;
+                codeBox.innerText = `.text {\n  column-count: ${cols};\n  column-gap: 20px;\n  column-rule: ${rule};\n}`;
+            }
+            update();
+        }
+
+        // DEMO: Flexbox
+        function renderFlexDemo(codeBox) {
+            // HTML
+            const container = document.createElement('div');
+            container.className = 'container-demo';
+            container.style.display = 'flex';
+            container.style.gap = '10px';
+            container.style.flexWrap = 'wrap';
+
+            for (let i = 1; i <= 5; i++) {
+                const box = document.createElement('div');
+                box.className = 'box';
+                box.textContent = i;
+                container.appendChild(box);
+            }
+            previewPanel.appendChild(container);
+
+            // Controls
+            createSelectControl('justify-content', ['flex-start', 'center', 'flex-end', 'space-between', 'space-around'], 'flex-start', (val) => {
+                container.style.justifyContent = val;
+                updateCode();
+            });
+            createSelectControl('align-items', ['stretch', 'center', 'flex-start', 'flex-end'], 'stretch', (val) => {
+                container.style.alignItems = val;
+                updateCode();
+            });
+            createRangeControl('gap', 0, 50, 10, 'px', (val) => {
+                container.style.gap = val;
+                updateCode();
+            });
+
+            function updateCode() {
+                codeBox.innerText = `.container {\n  display: flex;\n  justify-content: ${container.style.justifyContent};\n  align-items: ${container.style.alignItems};\n  gap: ${container.style.gap};\n}`;
+            }
+            updateCode();
+        }
+
+        // DEMO: Grid
+        function renderGridDemo(codeBox) {
+            const container = document.createElement('div');
+            container.className = 'container-demo';
+            container.style.display = 'grid';
+            container.style.gridTemplateColumns = 'repeat(3, 1fr)';
+            container.style.gap = '10px';
+
+            for (let i = 1; i <= 6; i++) {
+                const box = document.createElement('div');
+                box.className = 'box';
+                box.textContent = i;
+                // Make item 1 span
+                if (i === 1) box.id = 'grid-item-1';
+                container.appendChild(box);
+            }
+            previewPanel.appendChild(container);
+
+            createRangeControl('Gap', 0, 50, 10, 'px', val => {
+                container.style.gap = val;
+                updateCode();
+            });
+            createSelectControl('Columns', ['repeat(3, 1fr)', '1fr 2fr 1fr', 'repeat(auto-fill, minmax(100px, 1fr))'], 'repeat(3, 1fr)', val => {
+                container.style.gridTemplateColumns = val;
+                updateCode();
+            });
+
+            function updateCode() {
+                codeBox.innerText = `.container {\n  display: grid;\n  grid-template-columns: ${container.style.gridTemplateColumns};\n  gap: ${container.style.gap};\n}`;
+            }
+            updateCode();
+        }
+
+        // DEMO: Fonts
+        function renderFonts(codeBox) {
+            const container = document.createElement('div');
+            container.style.textAlign = 'center';
+            container.innerHTML = `<div id="font-demo" style="font-size: 3rem;">Variable Fonts</div>`;
+            previewPanel.appendChild(container);
+
+            const text = container.querySelector('#font-demo');
+            let weight = 400;
+            let slant = 0;
+
+            createRangeControl('Weight', 100, 900, 400, '', val => {
+                weight = val;
+                update();
+            });
+
+            // Note: System fonts might not support slant, but we demonstrate the syntax
+            createRangeControl('Slant (if supported)', -10, 10, 0, 'deg', val => {
+                slant = val;
+                update();
+            });
+
+            function update() {
+                text.style.fontWeight = weight;
+                text.style.fontVariationSettings = `'slnt' ${slant}`;
+                codeBox.innerText = `.text {\n  font-weight: ${weight};\n  font-variation-settings: 'slnt' ${slant};\n}`;
+            }
+            update();
+        }
+
+        // DEMO: Text Effects
+        function renderTextEffects(codeBox) {
+            const container = document.createElement('div');
+            container.style.maxWidth = '300px';
+            container.innerHTML = `
+                <div id="text-fx" style="font-size: 1.5rem; border: 1px solid #555; padding: 10px;">
+                    This is a very long text that might overflow the container if we are not careful.
+                </div>
+            `;
+            previewPanel.appendChild(container);
+
+            const el = container.querySelector('#text-fx');
+            el.style.whiteSpace = 'nowrap';
+            el.style.overflow = 'hidden';
+
+            createSelectControl('Text Overflow', ['clip', 'ellipsis'], 'clip', val => {
+                el.style.textOverflow = val;
+                updateCode();
+            });
+
+            createSelectControl('Text Shadow', ['none', '2px 2px 4px red', '0 0 10px blue'], 'none', val => {
+                el.style.textShadow = val;
+                updateCode();
+            });
+
+            function updateCode() {
+                codeBox.innerText = `.text {\n  white-space: nowrap;\n  overflow: hidden;\n  text-overflow: ${el.style.textOverflow};\n  text-shadow: ${el.style.textShadow};\n}`;
+            }
+            updateCode();
+        }
+
+        // DEMO: Writing Modes
+        function renderWritingModes(codeBox) {
+            const container = document.createElement('div');
+            container.style.border = '1px solid #555';
+            container.style.padding = '10px';
+            container.innerHTML = `
+                <h2>古池や</h2>
+                <p>蛙飛び込む</p>
+                <p>水の音</p>
+            `;
+            previewPanel.appendChild(container);
+
+            createSelectControl('Writing Mode', ['horizontal-tb', 'vertical-rl', 'vertical-lr'], 'horizontal-tb', val => {
+                container.style.writingMode = val;
+                updateCode(val);
+            });
+
+            function updateCode(val) {
+                codeBox.innerText = `.poem {\n  writing-mode: ${val};\n}`;
+            }
+            updateCode('horizontal-tb');
+        }
+
+        // DEMO: Transform (2D/3D)
+        function renderTransform(codeBox) {
+            const scene = document.createElement('div');
+            scene.className = 'cube-scene';
+            const cube = document.createElement('div');
+            cube.className = 'cube';
+
+            const faces = ['front', 'back', 'right', 'left', 'top', 'bottom'];
+            const transforms = [
+                'translateZ(50px)', 'rotateY(180deg) translateZ(50px)',
+                'rotateY(90deg) translateZ(50px)', 'rotateY(-90deg) translateZ(50px)',
+                'rotateX(90deg) translateZ(50px)', 'rotateX(-90deg) translateZ(50px)'
+            ];
+
+            faces.forEach((f, i) => {
+                const face = document.createElement('div');
+                face.className = 'cube-face';
+                face.style.transform = transforms[i];
+                face.textContent = f;
+                cube.appendChild(face);
+            });
+
+            scene.appendChild(cube);
+            previewPanel.appendChild(scene);
+
+            let rx = 45, ry = 45, scale = 1;
+
+            createRangeControl('Rotate X', 0, 360, 45, 'deg', val => { rx = val; update(); });
+            createRangeControl('Rotate Y', 0, 360, 45, 'deg', val => { ry = val; update(); });
+            createRangeControl('Scale', 0.5, 2, 1, '', val => { scale = val; update(); });
+
+            function update() {
+                const val = `rotateX(${rx}deg) rotateY(${ry}deg) scale(${scale})`;
+                cube.style.transform = val;
+                codeBox.innerText = `.cube {\n  transform-style: preserve-3d;\n  transform: ${val};\n}`;
+            }
+            update();
+        }
+
+        // DEMO: Transition
+        function renderTransition(codeBox) {
+            const box = document.createElement('div');
+            box.style.width = '100px';
+            box.style.height = '100px';
+            box.style.background = 'var(--accent-color)';
+            box.style.borderRadius = '8px';
+            box.style.cursor = 'pointer';
+            box.style.display = 'flex';
+            box.style.alignItems = 'center';
+            box.style.justifyContent = 'center';
+            box.innerText = 'Hover Me';
+
+            previewPanel.appendChild(box);
+
+            let duration = 0.5;
+            let timing = 'ease';
+
+            createRangeControl('Duration', 0.1, 2, 0.5, 's', val => {
+                duration = val;
+                update();
+            });
+            createSelectControl('Timing Function', ['ease', 'linear', 'ease-in', 'cubic-bezier(0.68, -0.55, 0.27, 1.55)'], 'ease', val => {
+                timing = val;
+                update();
+            });
+
+            function update() {
+                box.style.transition = `all ${duration}s ${timing}`;
+                codeBox.innerText = `.box {\n  transition: all ${duration}s ${timing};\n}\n.box:hover {\n  transform: scale(1.5) rotate(15deg);\n  background: #a855f7;\n}`;
+            }
+            update();
+
+            // Add hover effect via JS for demo simplicity (or inject style)
+            box.onmouseenter = () => {
+                box.style.transform = 'scale(1.5) rotate(15deg)';
+                box.style.background = '#a855f7';
+            };
+            box.onmouseleave = () => {
+                box.style.transform = 'none';
+                box.style.background = 'var(--accent-color)';
+            };
+        }
+
+        // DEMO: Keyframes
+        function renderKeyframes(codeBox) {
+            const box = document.createElement('div');
+            box.style.width = '50px';
+            box.style.height = '50px';
+            box.style.background = 'var(--success)';
+            box.style.borderRadius = '50%';
+            previewPanel.appendChild(box);
+
+            // Inject keyframes
+            if (!document.getElementById('anim-bounce')) {
+                const s = document.createElement('style');
+                s.id = 'anim-bounce';
+                s.textContent = `
+                    @keyframes bounce {
+                        0%, 100% { transform: translateY(0); }
+                        50% { transform: translateY(-100px); }
+                    }
+                    @keyframes spin {
+                        to { transform: rotate(360deg); }
+                    }
+                `;
+                document.head.appendChild(s);
+            }
+
+            let name = 'bounce';
+            let duration = 1;
+
+            createSelectControl('Animation Name', ['bounce', 'spin'], 'bounce', val => {
+                name = val;
+                update();
+            });
+            createRangeControl('Duration', 0.5, 5, 1, 's', val => {
+                duration = val;
+                update();
+            });
+
+            function update() {
+                box.style.animation = `${name} ${duration}s infinite`;
+                codeBox.innerText = `.ball {\n  animation: ${name} ${duration}s infinite;\n}\n@keyframes ${name} { ... }`;
+            }
+            update();
+        }
+
+        // DEMO: Variables
+        function renderVariables(codeBox) {
+            const container = document.createElement('div');
+            container.style.padding = '20px';
+            container.style.border = '2px solid var(--local-color, white)';
+            container.style.color = 'var(--local-color, white)';
+            container.innerHTML = 'I use --local-color';
+            previewPanel.appendChild(container);
+
+            let color = '#38bdf8';
+
+            createSelectControl('Variable Value', ['#38bdf8', '#22c55e', '#f43f5e'], '#38bdf8', val => {
+                color = val;
+                update();
+            });
+
+            function update() {
+                container.style.setProperty('--local-color', color);
+                codeBox.innerText = `:root {\n  --local-color: ${color};\n}\n.box {\n  color: var(--local-color);\n  border-color: var(--local-color);\n}`;
+            }
+            update();
+        }
+
+        // DEMO: Math Functions
+        function renderMathFunctions(codeBox) {
+            const container = document.createElement('div');
+            container.style.width = '100%';
+            container.style.border = '1px dashed #555';
+
+            const box = document.createElement('div');
+            box.style.background = 'var(--accent-color)';
+            box.style.height = '50px';
+            box.style.display = 'flex';
+            box.style.alignItems = 'center';
+            box.style.justifyContent = 'center';
+            box.innerText = 'Resize Window';
+
+            container.appendChild(box);
+            previewPanel.appendChild(container);
+
+            // We can't easily demonstrate resize in this fixed panel, so we simulate width change
+            let widthFunc = 'clamp(200px, 50%, 400px)';
+
+            createSelectControl('Width Function', ['calc(100% - 50px)', 'min(50%, 300px)', 'max(200px, 30%)', 'clamp(200px, 50%, 400px)'], 'clamp(200px, 50%, 400px)', val => {
+                widthFunc = val;
+                update();
+            });
+
+            function update() {
+                box.style.width = widthFunc;
+                codeBox.innerText = `.box {\n  width: ${widthFunc};\n}`;
+            }
+            update();
+        }
+
+        // DEMO: Filters
+        function renderFilters(codeBox) {
+            const img = document.createElement('div');
+            img.style.width = '200px';
+            img.style.height = '200px';
+            img.style.background = 'url(https://picsum.photos/200/200) center/cover';
+            img.style.borderRadius = '8px';
+            previewPanel.appendChild(img);
+
+            let blur = 0;
+            let hue = 0;
+            let gray = 0;
+
+            createRangeControl('Blur', 0, 10, 0, 'px', val => { blur = val; update(); });
+            createRangeControl('Hue Rotate', 0, 360, 0, 'deg', val => { hue = val; update(); });
+            createRangeControl('Grayscale', 0, 100, 0, '%', val => { gray = val; update(); });
+
+            function update() {
+                const val = `blur(${blur}px) hue-rotate(${hue}deg) grayscale(${gray}%)`;
+                img.style.filter = val;
+                codeBox.innerText = `.image {\n  filter: ${val};\n}`;
+            }
+            update();
+        }
+
+        // DEMO: Blend Modes
+        function renderBlendModes(codeBox) {
+            const container = document.createElement('div');
+            container.style.width = '200px';
+            container.style.height = '200px';
+            container.style.background = 'url(https://picsum.photos/200/200) center/cover';
+            container.style.position = 'relative';
+            container.style.display = 'flex';
+            container.style.alignItems = 'center';
+            container.style.justifyContent = 'center';
+
+            const overlay = document.createElement('div');
+            overlay.style.position = 'absolute';
+            overlay.style.inset = '0';
+            overlay.style.background = 'linear-gradient(45deg, red, blue)';
+            overlay.style.mixBlendMode = 'multiply';
+
+            const text = document.createElement('h1');
+            text.innerText = 'BLEND';
+            text.style.color = 'white';
+            text.style.zIndex = 10;
+            text.style.mixBlendMode = 'difference';
+
+            container.appendChild(overlay);
+            container.appendChild(text);
+            previewPanel.appendChild(container);
+
+            createSelectControl('Overlay Blend', ['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten'], 'multiply', val => {
+                overlay.style.mixBlendMode = val;
+                updateCode();
+            });
+
+            function updateCode() {
+                codeBox.innerText = `.overlay {\n  mix-blend-mode: ${overlay.style.mixBlendMode};\n}\n.text {\n  mix-blend-mode: difference;\n}`;
+            }
+            updateCode();
+        }
+
+        // DEMO: Media Queries
+        function renderMediaQueries(codeBox) {
+            const container = document.createElement('div');
+            container.style.width = '100%';
+            container.style.height = '100%';
+            container.style.display = 'flex';
+            container.style.flexDirection = 'column';
+            container.style.alignItems = 'center';
+            container.style.justifyContent = 'center';
+
+            const frame = document.createElement('iframe');
+            frame.style.width = '300px';
+            frame.style.height = '300px';
+            frame.style.border = '10px solid #333';
+            frame.style.borderRadius = '20px';
+            frame.style.background = 'white';
+            frame.style.transition = 'width 0.3s';
+
+            // Inject content into iframe
+            setTimeout(() => {
+                const doc = frame.contentDocument;
+                doc.body.innerHTML = `
+                    <style>
+                        body { margin: 0; display: flex; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif; transition: background 0.3s; }
+                        .msg { font-size: 20px; font-weight: bold; text-align: center; }
+                        
+                        /* Mobile First */
+                        body { background: #fee2e2; color: #991b1b; }
+                        .msg::after { content: "Mobile (< 400px)"; }
+                        
+                        @media (min-width: 400px) {
+                            body { background: #dcfce7; color: #166534; }
+                            .msg::after { content: "Tablet (>= 400px)"; }
+                        }
+                        @media (min-width: 600px) {
+                            body { background: #dbeafe; color: #1e40af; }
+                            .msg::after { content: "Desktop (>= 600px)"; }
+                        }
+                    </style>
+                    <div class="msg">Current: </div>
+                `;
+            }, 100);
+
+            container.appendChild(frame);
+            previewPanel.appendChild(container);
+
+            createRangeControl('Viewport Width', 300, 700, 300, 'px', val => {
+                frame.style.width = val + 'px';
+                updateCode(val);
+            });
+
+            function updateCode(w) {
+                codeBox.innerText = `/* Current Width: ${w}px */\n\n@media (min-width: 400px) { ... }\n@media (min-width: 600px) { ... }`;
+            }
+            updateCode(300);
+        }
+
+        // DEMO: Container Queries
+        function renderContainerQueries(codeBox) {
+            if (!CSS.supports('container-type: inline-size')) {
+                previewPanel.innerHTML = '<div style="color:white; text-align:center">Browser does not support Container Queries</div>';
+                return;
+            }
+
+            const wrapper = document.createElement('div');
+            wrapper.style.resize = 'horizontal';
+            wrapper.style.overflow = 'auto';
+            wrapper.style.width = '300px';
+            wrapper.style.maxWidth = '100%';
+            wrapper.style.minWidth = '200px';
+            wrapper.style.border = '2px dashed #666';
+            wrapper.style.padding = '10px';
+            wrapper.style.containerType = 'inline-size';
+            wrapper.style.containerName = 'card-container';
+
+            const card = document.createElement('div');
+            card.className = 'cq-card';
+            card.innerHTML = `
+                <div class="cq-img"></div>
+                <div class="cq-content">
+                    <h3>Card Title</h3>
+                    <p>Resize the dashed container to see layout change.</p>
+                </div>
+            `;
+
+            wrapper.appendChild(card);
+            previewPanel.appendChild(wrapper);
+
+            // Inject styles
+            const s = document.createElement('style');
+            s.textContent = `
+                .cq-card { display: flex; flex-direction: column; gap: 10px; background: rgba(255,255,255,0.1); padding: 10px; border-radius: 8px; }
+                .cq-img { width: 100%; height: 100px; background: var(--accent-color); border-radius: 4px; }
+                
+                @container card-container (min-width: 400px) {
+                    .cq-card { flex-direction: row; align-items: center; }
+                    .cq-img { width: 100px; height: 100px; }
+                }
+            `;
+            previewPanel.appendChild(s);
+
+            codeBox.innerText = `.wrapper {\n  container-type: inline-size;\n  container-name: card-container;\n}\n\n@container card-container (min-width: 400px) {\n  .card { flex-direction: row; }\n}`;
+        }
+
+        // DEMO: Scroll Snap
+        function renderScrollSnap(codeBox) {
+            const container = document.createElement('div');
+            container.style.width = '300px';
+            container.style.height = '200px';
+            container.style.overflowX = 'auto';
+            container.style.display = 'flex';
+            container.style.scrollSnapType = 'x mandatory';
+            container.style.gap = '10px';
+            container.style.border = '1px solid #555';
+
+            for (let i = 1; i <= 5; i++) {
+                const item = document.createElement('div');
+                item.style.minWidth = '300px';
+                item.style.height = '100%';
+                item.style.scrollSnapAlign = 'center';
+                item.style.background = i % 2 ? 'var(--accent-color)' : '#a855f7';
+                item.style.display = 'flex';
+                item.style.alignItems = 'center';
+                item.style.justifyContent = 'center';
+                item.style.fontSize = '2rem';
+                item.style.fontWeight = 'bold';
+                item.innerText = i;
+                container.appendChild(item);
+            }
+
+            previewPanel.appendChild(container);
+
+            let type = 'x mandatory';
+
+            createSelectControl('Snap Type', ['x mandatory', 'x proximity', 'none'], 'x mandatory', val => {
+                type = val;
+                update();
+            });
+
+            function update() {
+                container.style.scrollSnapType = type;
+                codeBox.innerText = `.container {\n  overflow-x: auto;\n  scroll-snap-type: ${type};\n}\n.item {\n  scroll-snap-align: center;\n}`;
+            }
+            update();
+        }
+
+        // DEMO: Viewport Units
+        function renderViewportUnits(codeBox) {
+            const container = document.createElement('div');
+            container.style.width = '100%';
+            container.style.height = '100%';
+            container.style.position = 'relative';
+            container.style.border = '1px solid #333';
+
+            const box = document.createElement('div');
+            box.style.background = 'rgba(34, 197, 94, 0.5)';
+            box.style.position = 'absolute';
+            box.style.top = '0';
+            box.style.left = '0';
+            box.style.display = 'flex';
+            box.style.alignItems = 'center';
+            box.style.justifyContent = 'center';
+            box.innerText = '50vw x 50vh';
+
+            container.appendChild(box);
+            previewPanel.appendChild(container);
+
+            let wUnit = 'vw';
+            let hUnit = 'vh';
+
+            createSelectControl('Width Unit', ['vw', 'dvw', 'svw', 'lvw', '%'], 'vw', val => { wUnit = val; update(); });
+            createSelectControl('Height Unit', ['vh', 'dvh', 'svh', 'lvh', '%'], 'vh', val => { hUnit = val; update(); });
+
+            function update() {
+                // Since we are in a small container, these units refer to the actual viewport, 
+                // which might be too big for the preview box. 
+                // We will simulate it by setting pixel values relative to the container for visualization,
+                // but show the correct code.
+
+                // For true viewport units, we just set them.
+                box.style.width = `50${wUnit}`;
+                box.style.height = `50${hUnit}`;
+
+                codeBox.innerText = `.box {\n  width: 50${wUnit};\n  height: 50${hUnit};\n  /* dv* = dynamic (address bar) */\n  /* sv* = small (address bar shown) */\n  /* lv* = large (address bar hidden) */\n}`;
+            }
+            update();
+        }
+
+        // DEMO: Logical Properties
+        function renderLogicalProps(codeBox) {
+            const container = document.createElement('div');
+            container.style.width = '300px';
+            container.style.border = '1px solid #555';
+            container.style.padding = '10px';
+
+            const box = document.createElement('div');
+            box.style.background = 'var(--accent-color)';
+            box.style.color = 'white';
+            box.style.padding = '10px';
+            box.innerText = 'Logical Box';
+
+            container.appendChild(box);
+            previewPanel.appendChild(container);
+
+            let mode = 'horizontal-tb';
+            let prop = 'margin-inline-start';
+
+            createSelectControl('Writing Mode', ['horizontal-tb', 'vertical-rl', 'vertical-lr'], 'horizontal-tb', val => {
+                mode = val;
+                update();
+            });
+
+            createRangeControl('Margin Inline Start', 0, 50, 0, 'px', val => {
+                box.style.marginInlineStart = val + 'px';
+                updateCode();
+            });
+
+            createRangeControl('Padding Block End', 0, 50, 10, 'px', val => {
+                box.style.paddingBlockEnd = val + 'px';
+                updateCode();
+            });
+
+            function update() {
+                container.style.writingMode = mode;
+                updateCode();
+            }
+
+            function updateCode() {
+                codeBox.innerText = `.container {\n  writing-mode: ${mode};\n}\n.box {\n  margin-inline-start: ${box.style.marginInlineStart};\n  padding-block-end: ${box.style.paddingBlockEnd};\n  /* Adapts to writing mode! */\n}`;
+            }
+            update();
+        }
+
+        // DEMO: Cascade Layers
+        function renderLayers(codeBox) {
+            const container = document.createElement('div');
+            container.innerHTML = `
+                <div class="layer-box">I am styled by Layers</div>
+            `;
+            previewPanel.appendChild(container);
+
+            // Inject layer styles
+            const s = document.createElement('style');
+            s.textContent = `
+                @layer base, special;
+                
+                @layer special {
+                    .layer-box { background: var(--accent-color); color: white; padding: 20px; border-radius: 8px; }
+                }
+                
+                @layer base {
+                    .layer-box { background: red; color: black; padding: 5px; }
+                }
+            `;
+            previewPanel.appendChild(s);
+
+            codeBox.innerText = `/* Order matters! 'special' comes after 'base' */\n@layer base, special;\n\n@layer base { .box { background: red; } }\n@layer special { .box { background: blue; } }\n\n/* Result: Blue background (from special) */`;
+        }
+
+        // DEMO: Nesting
+        function renderNesting(codeBox) {
+            const container = document.createElement('div');
+            container.className = 'nest-parent';
+            container.innerHTML = `
+                <div class="nest-child">
+                    I am a child
+                    <span class="nest-grandchild">Grandchild</span>
+                </div>
+            `;
+            previewPanel.appendChild(container);
+
+            // Inject styles
+            const s = document.createElement('style');
+            s.textContent = `
+                .nest-parent {
+                    background: #333;
+                    padding: 20px;
+                    & .nest-child {
+                        background: #555;
+                        padding: 10px;
+                        color: white;
+                        &:hover {
+                            background: var(--accent-color);
+                        }
+                        & .nest-grandchild {
+                            font-weight: bold;
+                            color: #a5b4fc;
+                        }
+                    }
+                }
+            `;
+            previewPanel.appendChild(s);
+
+            codeBox.innerText = `.parent {\n  background: #333;\n  & .child {\n    background: #555;\n    &:hover { background: blue; }\n  }\n}`;
+        }
+
+        // DEMO: View Transitions
+        function renderViewTransitions(codeBox) {
+            const container = document.createElement('div');
+            container.style.display = 'flex';
+            container.style.flexDirection = 'column';
+            container.style.alignItems = 'center';
+            container.style.gap = '20px';
+
+            const box = document.createElement('div');
+            box.id = 'vt-box';
+            box.style.width = '100px';
+            box.style.height = '100px';
+            box.style.background = 'var(--accent-color)';
+            box.style.borderRadius = '8px';
+            box.style.viewTransitionName = 'demo-box';
+
+            const btn = document.createElement('button');
+            btn.innerText = 'Toggle State (View Transition)';
+            btn.style.width = 'auto';
+
+            let isBig = false;
+
+            btn.onclick = () => {
+                if (!document.startViewTransition) {
+                    alert('Browser does not support View Transitions API');
+                    // Fallback
+                    toggleState();
+                    return;
+                }
+
+                document.startViewTransition(() => {
+                    toggleState();
+                });
+            };
+
+            function toggleState() {
+                isBig = !isBig;
+                if (isBig) {
+                    box.style.width = '200px';
+                    box.style.background = '#a855f7';
+                    box.style.transform = 'rotate(10deg)';
+                    box.style.marginLeft = '100px';
+                } else {
+                    box.style.width = '100px';
+                    box.style.background = 'var(--accent-color)';
+                    box.style.transform = 'none';
+                    box.style.marginLeft = '0';
+                }
+            }
+
+            container.appendChild(box);
+            container.appendChild(btn);
+            previewPanel.appendChild(container);
+
+            codeBox.innerText = `.box { view-transition-name: demo-box; }\n\n// JS\ndocument.startViewTransition(() => {\n  // DOM updates\n});`;
+        }
+        // --- Helper Functions ---
+
+        function createRangeControl(label, min, max, value, unit, callback) {
+            const group = document.createElement('div');
+            group.className = 'control-group';
+
+            const lbl = document.createElement('label');
+            lbl.textContent = `${label}: ${value}${unit}`;
+
+            const input = document.createElement('input');
+            input.type = 'range';
+            input.min = min;
+            input.max = max;
+            input.value = value;
+
+            input.addEventListener('input', (e) => {
+                lbl.textContent = `${label}: ${e.target.value}${unit}`;
+                callback(e.target.value + (unit === '%' || unit === 'px' || unit === 'deg' ? unit : ''));
+            });
+
+            group.appendChild(lbl);
+            group.appendChild(input);
+            controlsPanel.appendChild(group);
+        }
+
+        function createSelectControl(label, options, selected, callback) {
+            const group = document.createElement('div');
+            group.className = 'control-group';
+
+            const lbl = document.createElement('label');
+            lbl.textContent = label;
+
+            const sel = document.createElement('select');
+            options.forEach(opt => {
+                const option = document.createElement('option');
+                option.value = opt;
+                option.textContent = opt;
+                if (opt === selected) option.selected = true;
+                sel.appendChild(option);
+            });
+
+            sel.addEventListener('change', (e) => callback(e.target.value));
+
+            group.appendChild(lbl);
+            group.appendChild(sel);
+            controlsPanel.appendChild(group);
+        }
+
+        // Initialize
+        renderSidebar();
+        loadDemo(cssMap[0].items[0]); // Load Flexbox by default
+
+    </script>
+</body>
+
+</html>

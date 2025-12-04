@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSS 进化史博物馆</title>
+    <style>
+        /* =========================================
+           1. 核心变量与重置 (Variables & Reset)
+           ========================================= */
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: rgba(30, 41, 59, 0.6);
+            --card-border: rgba(255, 255, 255, 0.1);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --primary: #3b82f6;
+            --secondary: #8b5cf6;
+            --accent: #10b981;
+            --gradient: linear-gradient(135deg, var(--primary), var(--secondary));
+            --glass: blur(12px);
+            --radius: 16px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            /* 网格背景纹理 */
+            background-image: 
+                linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* =========================================
+           2. 布局结构 (Sidebar & Main)
+           ========================================= */
+        aside {
+            width: 260px;
+            height: 100vh;
+            position: sticky;
+            top: 0;
+            padding: 2rem;
+            border-right: 1px solid var(--card-border);
+            backdrop-filter: var(--glass);
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+            background: rgba(15, 23, 42, 0.8);
+            z-index: 10;
+        }
+
+        aside h1 {
+            font-size: 1.5rem;
+            background: var(--gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: 800;
+        }
+
+        nav ul { list-style: none; display: flex; flex-direction: column; gap: 1rem; }
+        
+        nav a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-weight: 500;
+            transition: 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            border-radius: 8px;
+        }
+
+        nav a:hover, nav a.active {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-main);
+            transform: translateX(5px);
+        }
+
+        nav a.active { border-left: 3px solid var(--primary); }
+
+        main {
+            flex: 1;
+            padding: 3rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        section {
+            margin-bottom: 5rem;
+            scroll-margin-top: 2rem;
+            opacity: 0;
+            transform: translateY(20px);
+            animation: fadeIn 0.8s forwards;
+        }
+
+        @keyframes fadeIn {
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        h2 {
+            font-size: 2rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        
+        h2::after {
+            content: '';
+            height: 2px;
+            flex: 1;
+            background: linear-gradient(90deg, var(--card-border), transparent);
+        }
+
+        p.desc {
+            color: var(--text-muted);
+            margin-bottom: 2rem;
+            line-height: 1.6;
+            max-width: 800px;
+        }
+
+        /* =========================================
+           3. 通用组件 (Cards & Controls)
+           ========================================= */
+        .demo-card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius);
+            padding: 2rem;
+            display: grid;
+            grid-template-columns: 1fr 300px; /* 左边展示，右边控制 */
+            gap: 2rem;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+        }
+
+        @media (max-width: 900px) {
+            .demo-card { grid-template-columns: 1fr; }
+            aside { display: none; } /* 移动端隐藏侧边栏简化演示 */
+            main { padding: 1.5rem; }
+        }
+
+        .canvas {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 12px;
+            min-height: 300px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+            border: 1px dashed rgba(255,255,255,0.1);
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .control-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            accent-color: var(--primary);
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        button {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--card-border);
+            color: var(--text-main);
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        button:hover, button.active {
+            background: var(--primary);
+            border-color: var(--primary);
+        }
+
+        code {
+            background: rgba(0,0,0,0.5);
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: var(--accent);
+            font-family: monospace;
+        }
+
+        /* =========================================
+           4. 具体演示样式 (Specific Demos)
+           ========================================= */
+
+        /* --- Box Model --- */
+        #box-demo {
+            width: 100px;
+            height: 100px;
+            background: var(--primary);
+            transition: 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+        }
+        .box-wrapper {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px dashed #fff;
+        }
+
+        /* --- Flexbox --- */
+        #flex-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            gap: 10px;
+            padding: 10px;
+        }
+        .flex-item {
+            width: 60px;
+            height: 60px;
+            background: var(--secondary);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+        }
+
+        /* --- Modern Grid & Vars --- */
+        #grid-container {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            width: 80%;
+            height: 80%;
+        }
+        .grid-item {
+            background: var(--accent);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: 0.3s;
+            cursor: pointer;
+            font-weight: bold;
+            color: #0f172a;
+        }
+        .grid-item:nth-child(1) { background-color: var(--primary); color: white; }
+        .grid-item:hover { filter: brightness(1.2); }
+
+        /* --- Future: Container & :has --- */
+        .resize-wrapper {
+            container-type: inline-size; /* 关键：定义容器 */
+            width: 50%;
+            min-width: 200px;
+            height: 80%;
+            background: rgba(255,255,255,0.05);
+            border-right: 4px solid var(--primary); /* 拖拽把手模拟 */
+            resize: horizontal;
+            overflow: hidden;
+            padding: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: 0.1s;
+        }
+
+        .cq-card {
+            background: var(--secondary);
+            padding: 1rem;
+            border-radius: 8px;
+            width: 100%;
+            text-align: center;
+        }
+
+        /* 容器查询逻辑 */
+        @container (min-width: 350px) {
+            .cq-card {
+                background: var(--accent);
+                display: flex;
+                align-items: center;
+                gap: 1rem;
+                text-align: left;
+            }
+            .cq-card::before {
+                content: 'Wide';
+            }
+        }
+        @container (max-width: 349px) {
+            .cq-card::before {
+                content: 'Narrow';
+            }
+        }
+
+        /* :has() Demo */
+        .has-parent {
+            padding: 20px;
+            border: 2px solid var(--text-muted);
+            border-radius: 12px;
+            transition: 0.3s;
+        }
+        /* 当子元素被选中时，父元素改变样式 */
+        .has-parent:has(input:checked) {
+            border-color: var(--accent);
+            background: rgba(16, 185, 129, 0.1);
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
+        }
+
+    </style>
+</head>
+<body>
+
+    <!-- 左侧导航 -->
+    <aside>
+        <h1>CSS Evolution</h1>
+        <nav>
+            <a href="#v1" class="active">CSS 1 & 2 <br><small>基础架构</small></a>
+            <a href="#v3">CSS 3 <br><small>视觉革命</small></a>
+            <a href="#modern">Modern CSS <br><small>逻辑与布局</small></a>
+            <a href="#next">Next Gen <br><small>未来特性</small></a>
+        </nav>
+        <div style="margin-top: auto; font-size: 0.8rem; color: var(--text-muted);">
+            CSS 博物馆 © 2025
+        </div>
+    </aside>
+
+    <!-- 主内容区 -->
+    <main>
+        <!-- CSS 1 & 2 -->
+        <section id="v1">
+            <h2>CSS 1 & 2: 坚实的地基</h2>
+            <p class="desc">在 CSS 的早期，一切都围绕着<b>盒子模型 (Box Model)</b> 和基础定位。这里你可以直观地感受到 Padding（内边距）和 Margin（外边距）的区别。</p>
+            
+            <div class="demo-card">
+                <div class="canvas">
+                    <div class="box-wrapper">
+                        <div id="box-demo">Content</div>
+                    </div>
+                </div>
+                <div class="controls">
+                    <div class="control-group">
+                        <label>Padding: <span id="pad-val">20px</span></label>
+                        <input type="range" min="0" max="50" value="20" oninput="updateBox('padding', this.value)">
+                    </div>
+                    <div class="control-group">
+                        <label>Margin: <span id="mar-val">20px</span></label>
+                        <input type="range" min="0" max="50" value="20" oninput="updateBox('margin', this.value)">
+                    </div>
+                    <div class="control-group">
+                        <label>Border Radius (Preview CSS3):</label>
+                        <input type="range" min="0" max="50" value="0" oninput="updateBox('borderRadius', this.value + 'px')">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- CSS 3 -->
+        <section id="v3">
+            <h2>CSS 3: 视觉与交互的爆发</h2>
+            <p class="desc">CSS3 带来了 Web 设计的黄金时代。<b>Flexbox</b> 解决了布局难题，圆角、阴影和渐变让网页不再枯燥。甚至可以在没有 JS 的情况下做动画。</p>
+            
+            <div class="demo-card">
+                <div class="canvas">
+                    <div id="flex-container">
+                        <div class="flex-item">1</div>
+                        <div class="flex-item">2</div>
+                        <div class="flex-item">3</div>
+                    </div>
+                </div>
+                <div class="controls">
+                    <div class="control-group">
+                        <label>Justify Content (主轴对齐)</label>
+                        <div class="btn-group">
+                            <button onclick="setFlex('justify-content', 'flex-start')">Start</button>
+                            <button onclick="setFlex('justify-content', 'center')">Center</button>
+                            <button onclick="setFlex('justify-content', 'space-between')">Space-Btwn</button>
+                        </div>
+                    </div>
+                    <div class="control-group">
+                        <label>Align Items (交叉轴对齐)</label>
+                        <div class="btn-group">
+                            <button onclick="setFlex('align-items', 'flex-start')">Start</button>
+                            <button onclick="setFlex('align-items', 'center')">Center</button>
+                            <button onclick="setFlex('align-items', 'stretch')">Stretch</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Modern CSS -->
+        <section id="modern">
+            <h2>Modern CSS: 逻辑化与 Grid</h2>
+            <p class="desc">现代 CSS 引入了编程逻辑。<b>CSS Grid</b> 提供了真正的二维布局能力，而 <b>CSS Variables (Custom Properties)</b> 让主题切换变得轻而易举。</p>
+            
+            <div class="demo-card">
+                <div class="canvas" style="flex-direction: column; gap: 10px;">
+                    <div id="grid-container">
+                        <div class="grid-item" style="grid-column: span 2; grid-row: span 2;">Header</div>
+                        <div class="grid-item">Side</div>
+                        <div class="grid-item">Foot</div>
+                    </div>
+                </div>
+                <div class="controls">
+                    <div class="control-group">
+                        <label>Grid Gap (网格间距)</label>
+                        <input type="range" min="0" max="30" value="10" oninput="document.getElementById('grid-container').style.gap = this.value + 'px'">
+                    </div>
+                    <div class="control-group">
+                        <label>Dynamic Theme (CSS Variables)</label>
+                        <div class="btn-group">
+                            <button onclick="changeTheme('#3b82f6', '#8b5cf6')">Blue/Purple</button>
+                            <button onclick="changeTheme('#ef4444', '#f59e0b')">Red/Orange</button>
+                            <button onclick="changeTheme('#10b981', '#06b6d4')">Green/Cyan</button>
+                        </div>
+                        <p style="font-size: 0.8rem; margin-top: 5px; color: var(--text-muted)">这会改变整个页面的主色调</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Next Gen -->
+        <section id="next">
+            <h2>Next Gen: 智能与感知</h2>
+            <p class="desc">CSS 的未来已经到来。<b>Container Queries (@container)</b> 让组件根据自身大小响应，而不是屏幕大小。<b>:has()</b> 终于让我们能根据子元素控制父元素。</p>
+            
+            <div class="demo-card">
+                <div class="canvas" style="display: flex; flex-direction: column; justify-content: space-evenly;">
+                    
+                    <!-- Container Query Demo -->
+                    <div style="width: 100%; display:flex; flex-direction: column; align-items: center; gap: 10px;">
+                        <span style="font-size: 0.8rem; color: var(--text-muted);">拖动右侧边缘改变容器宽度 👇</span>
+                        <div class="resize-wrapper">
+                            <div class="cq-card">
+                                <strong>Smart Card</strong>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- :has() Demo -->
+                    <div class="has-parent">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox"> 
+                            选中我，高亮父元素 (:has)
+                        </label>
+                    </div>
+
+                </div>
+                <div class="controls">
+                    <div class="control-group">
+                        <label>解释</label>
+                        <p style="font-size: 0.9rem; color: var(--text-muted);">
+                            1. <strong>Container Queries</strong>: 上方的卡片背景色和布局会随着你拖动容器宽度而改变，这在以前只能靠 JS 实现。<br><br>
+                            2. <strong>:has() Selector</strong>: 勾选复选框，外层边框会变色。这是 CSS 历史上最被期待的“父级选择器”功能。
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        // Box Model 逻辑
+        function updateBox(prop, val) {
+            const box = document.getElementById('box-demo');
+            if (prop === 'padding' || prop === 'margin') {
+                box.style[prop] = val + 'px';
+                // 更新文字显示
+                const labelId = prop === 'padding' ? 'pad-val' : 'mar-val';
+                document.getElementById(labelId).innerText = val + 'px';
+            } else {
+                box.style[prop] = val;
+            }
+        }
+
+        // Flexbox 逻辑
+        function setFlex(prop, val) {
+            document.getElementById('flex-container').style[prop] = val;
+        }
+
+        // Theme 逻辑
+        function changeTheme(primary, secondary) {
+            const root = document.documentElement;
+            root.style.setProperty('--primary', primary);
+            root.style.setProperty('--secondary', secondary);
+            root.style.setProperty('--gradient', `linear-gradient(135deg, ${primary}, ${secondary})`);
+        }
+
+        // 导航高亮逻辑
+        window.addEventListener('scroll', () => {
+            const sections = document.querySelectorAll('section');
+            const navLinks = document.querySelectorAll('nav a');
+            
+            let current = '';
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                if (pageYOffset >= sectionTop - 200) {
+                    current = section.getAttribute('id');
+                }
+            });
+
+            navLinks.forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('href').includes(current)) {
+                    link.classList.add('active');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

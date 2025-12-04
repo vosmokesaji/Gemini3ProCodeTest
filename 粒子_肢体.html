@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>沉浸式 WebGL 粒子人体系统</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #050505;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        /* 视频元素 (默认隐藏或用于调试) */
+        #input_video {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            width: 320px;
+            height: 240px;
+            border-radius: 8px;
+            border: 2px solid #333;
+            transform: scaleX(-1); /* 镜像 */
+            z-index: 10;
+            display: block;
+        }
+
+        /* Loading 提示 */
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 24px;
+            pointer-events: none;
+            text-align: center;
+            z-index: 100;
+        }
+
+        /* 数据标注容器 */
+        #labels-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            overflow: hidden;
+        }
+
+        .data-label {
+            position: absolute;
+            background: rgba(0, 255, 255, 0.1);
+            border: 1px solid rgba(0, 255, 255, 0.5);
+            color: #00ffff;
+            padding: 4px 8px;
+            font-size: 12px;
+            border-radius: 4px;
+            backdrop-filter: blur(2px);
+            white-space: nowrap;
+            transition: opacity 0.2s;
+        }
+
+        /* 隐藏 Tweakpane 的一些默认样式 */
+        .tp-dfwv {
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 摄像头输入 -->
+    <video id="input_video" playsinline></video>
+    
+    <!-- 加载提示 -->
+    <div id="loading">
+        正在初始化 AI 模型与粒子系统...<br>
+        <span style="font-size:14px; opacity:0.7">首次加载可能需要几秒钟</span>
+    </div>
+
+    <!-- 标注层 -->
+    <div id="labels-container"></div>
+
+    <!-- 脚本引入: Three.js, MediaPipe, Tweakpane -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+                "@mediapipe/pose": "https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js",
+                "@mediapipe/camera_utils": "https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js",
+                "tweakpane": "https://cdn.jsdelivr.net/npm/tweakpane@4.0.1/dist/tweakpane.min.js"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { Pane } from 'tweakpane';
+        
+        // 全局变量
+        const videoElement = document.getElementById('input_video');
+        const loadingElement = document.getElementById('loading');
+        const labelsContainer = document.getElementById('labels-container');
+        
+        // 配置参数
+        const CONFIG = {
+            bodyColor: '#00ffff',
+            skeletonColor: '#ffffff',
+            bgColor: '#050505',
+            particleSize: 0.15,
+            showCamera: true,
+            showSkeleton: true,
+            showLabels: true,
+            particleCount: 2000 // 构成身体的粒子数量
+        };
+
+        // Three.js 核心对象
+        let scene, camera, renderer, controls;
+        let bodyParticles, bodyGeometry;
+        let skeletonLines, skeletonGeometry;
+        let bgParticles;
+        
+        // MediaPipe 数据
+        let poseResults = null;
+
+        // 初始化
+        initThree();
+        initBackground();
+        initBodySystem();
+        initUI();
+        initMediaPipe();
+        animate();
+
+        // -------------------------------------------------------------------------
+        // 1. Three.js 环境设置
+        // -------------------------------------------------------------------------
+        function initThree() {
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(CONFIG.bgColor, 0.02);
+            scene.background = new THREE.Color(CONFIG.bgColor);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+            camera.position.set(0, 1, 3);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            document.body.appendChild(renderer.domElement);
+
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        // -------------------------------------------------------------------------
+        // 2. 背景粒子 (深空效果)
+        // -------------------------------------------------------------------------
+        function initBackground() {
+            const geometry = new THREE.BufferGeometry();
+            const count = 1000;
+            const positions = new Float32Array(count * 3);
+
+            for (let i = 0; i < count * 3; i++) {
+                // 随机分布在 -10 到 10 的空间内
+                positions[i] = (Math.random() - 0.5) * 20;
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+            const material = new THREE.PointsMaterial({
+                size: 0.05,
+                color: 0x888888,
+                transparent: true,
+                opacity: 0.6,
+                sizeAttenuation: true
+            });
+
+            bgParticles = new THREE.Points(geometry, material);
+            scene.add(bgParticles);
+        }
+
+        // -------------------------------------------------------------------------
+        // 3. 身体粒子系统 & 骨骼
+        // -------------------------------------------------------------------------
+        function initBodySystem() {
+            // --- A. 身体粒子 (PointCloud) ---
+            // 我们不只是显示33个点，而是在骨骼之间插值生成更多粒子
+            bodyGeometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(CONFIG.particleCount * 3);
+            bodyGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+            // 生成圆形纹理让粒子更好看
+            const sprite = getSprite();
+
+            const bodyMaterial = new THREE.PointsMaterial({
+                color: CONFIG.bodyColor,
+                size: CONFIG.particleSize,
+                map: sprite,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                opacity: 0.8
+            });
+
+            bodyParticles = new THREE.Points(bodyGeometry, bodyMaterial);
+            scene.add(bodyParticles);
+
+            // --- B. 骨骼线条 (Lines) ---
+            skeletonGeometry = new THREE.BufferGeometry();
+            const skelPositions = new Float32Array(100 * 3); // 预留空间
+            skeletonGeometry.setAttribute('position', new THREE.BufferAttribute(skelPositions, 3));
+
+            const skeletonMaterial = new THREE.LineBasicMaterial({
+                color: CONFIG.skeletonColor,
+                transparent: true,
+                opacity: 0.3
+            });
+
+            skeletonLines = new THREE.LineSegments(skeletonGeometry, skeletonMaterial);
+            scene.add(skeletonLines);
+        }
+
+        // 生成发光粒子贴图
+        function getSprite() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 32;
+            canvas.height = 32;
+            const context = canvas.getContext('2d');
+            const gradient = context.createRadialGradient(16, 16, 0, 16, 16, 16);
+            gradient.addColorStop(0, 'rgba(255,255,255,1)');
+            gradient.addColorStop(0.4, 'rgba(255,255,255,0.5)');
+            gradient.addColorStop(1, 'rgba(0,0,0,0)');
+            context.fillStyle = gradient;
+            context.fillRect(0, 0, 32, 32);
+            const texture = new THREE.Texture(canvas);
+            texture.needsUpdate = true;
+            return texture;
+        }
+
+        // -------------------------------------------------------------------------
+        // 4. MediaPipe 集成
+        // -------------------------------------------------------------------------
+        function initMediaPipe() {
+            // 动态加载 MediaPipe Pose
+            const script1 = document.createElement('script');
+            script1.src = "https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js";
+            script1.onload = () => {
+                const script2 = document.createElement('script');
+                script2.src = "https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js";
+                script2.onload = setupPose;
+                document.body.appendChild(script2);
+            };
+            document.body.appendChild(script1);
+        }
+
+        function setupPose() {
+            const pose = new Pose({
+                locateFile: (file) => {
+                    return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
+                }
+            });
+
+            pose.setOptions({
+                modelComplexity: 1,
+                smoothLandmarks: true,
+                enableSegmentation: false,
+                smoothSegmentation: false,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+
+            pose.onResults(onPoseResults);
+
+            const cameraUtils = new Camera(videoElement, {
+                onFrame: async () => {
+                    await pose.send({ image: videoElement });
+                },
+                width: 640,
+                height: 480
+            });
+            cameraUtils.start();
+        }
+
+        function onPoseResults(results) {
+            loadingElement.style.display = 'none';
+            poseResults = results;
+        }
+
+        // -------------------------------------------------------------------------
+        // 5. 更新逻辑 (Core)
+        // -------------------------------------------------------------------------
+        
+        // MediaPipe Pose 的连接映射 (部分)
+        const CONNECTIONS = [
+            [11, 12], [11, 13], [13, 15], [12, 14], [14, 16], // 手臂
+            [11, 23], [12, 24], [23, 24], // 躯干
+            [23, 25], [24, 26], [25, 27], [26, 28], // 腿
+            [27, 29], [28, 30], [29, 31], [30, 32], // 脚
+            [0, 1], [1, 2], [2, 3], [3, 7], [0, 4], [4, 5], [5, 6], [6, 8] // 脸部轮廓简化
+        ];
+
+        function updateBody() {
+            if (!poseResults || !poseResults.poseLandmarks) {
+                // 如果没人，把粒子藏起来
+                bodyParticles.visible = false;
+                skeletonLines.visible = false;
+                labelsContainer.innerHTML = '';
+                return;
+            }
+
+            bodyParticles.visible = true;
+            skeletonLines.visible = CONFIG.showSkeleton;
+
+            const landmarks = poseResults.poseLandmarks;
+            const positions = bodyGeometry.attributes.position.array;
+            
+            // 3D 转换参数: 将 MediaPipe (0~1) 映射到 Three.js 世界坐标
+            // 此时屏幕中心为 (0,0,0)
+            const worldLandmarks = landmarks.map(lm => {
+                return new THREE.Vector3(
+                    (lm.x - 0.5) * -4,  // 翻转X并缩放
+                    (lm.y - 0.5) * -3,  // 翻转Y并缩放
+                    lm.z * -1           // 深度缩放 (MediaPipe Z 是相对的)
+                );
+            });
+
+            // A. 更新骨骼连线
+            if (CONFIG.showSkeleton) {
+                const linePositions = [];
+                CONNECTIONS.forEach(([i, j]) => {
+                    if(worldLandmarks[i] && worldLandmarks[j]) {
+                        linePositions.push(worldLandmarks[i].x, worldLandmarks[i].y, worldLandmarks[i].z);
+                        linePositions.push(worldLandmarks[j].x, worldLandmarks[j].y, worldLandmarks[j].z);
+                    }
+                });
+                skeletonGeometry.setAttribute('position', new THREE.Float32BufferAttribute(linePositions, 3));
+            }
+
+            // B. 更新粒子聚合体 (Volumetric Body)
+            // 算法：遍历所有连接，在连接线上随机插值生成粒子
+            let pIndex = 0;
+            const particlesPerBone = Math.floor(CONFIG.particleCount / CONNECTIONS.length);
+
+            CONNECTIONS.forEach(([startIdx, endIdx]) => {
+                const start = worldLandmarks[startIdx];
+                const end = worldLandmarks[endIdx];
+
+                for (let i = 0; i < particlesPerBone; i++) {
+                    if (pIndex >= positions.length) break;
+
+                    const t = Math.random(); // 插值因子
+                    // 增加一点随机抖动，模拟体积感
+                    const jitter = 0.05; 
+                    
+                    positions[pIndex++] = start.x + (end.x - start.x) * t + (Math.random() - 0.5) * jitter;
+                    positions[pIndex++] = start.y + (end.y - start.y) * t + (Math.random() - 0.5) * jitter;
+                    positions[pIndex++] = start.z + (end.z - start.z) * t + (Math.random() - 0.5) * jitter;
+                }
+            });
+
+            bodyGeometry.attributes.position.needsUpdate = true;
+
+            // C. 更新数据标签 UI
+            if (CONFIG.showLabels) {
+                updateLabels(worldLandmarks);
+            } else {
+                labelsContainer.innerHTML = '';
+            }
+        }
+
+        // 将 3D 坐标投影到 2D 屏幕并更新 DOM
+        function updateLabels(worldLandmarks) {
+            // 定义我们要标注的关键点：索引 + 名称
+            const targets = [
+                { index: 0, name: "Head / 头部" },
+                { index: 19, name: "Right Hand / 右手" }, // Index finger
+                { index: 20, name: "Left Hand / 左手" }
+            ];
+
+            // 简单的虚拟 DOM 池管理，避免频繁创建/销毁
+            const existingLabels = Array.from(labelsContainer.children);
+            
+            targets.forEach((target, i) => {
+                let el = existingLabels[i];
+                if (!el) {
+                    el = document.createElement('div');
+                    el.className = 'data-label';
+                    labelsContainer.appendChild(el);
+                }
+                
+                // 投影
+                const v = worldLandmarks[target.index].clone();
+                v.project(camera); // 归一化设备坐标 (-1 到 +1)
+
+                // 转换到屏幕像素坐标
+                const x = (v.x * 0.5 + 0.5) * window.innerWidth;
+                const y = -(v.y * 0.5 - 0.5) * window.innerHeight;
+
+                // 只有在视野内才显示
+                if (Math.abs(v.z) < 1) {
+                    el.style.display = 'block';
+                    el.style.transform = `translate(${x}px, ${y}px)`;
+                    el.textContent = `${target.name} [${worldLandmarks[target.index].z.toFixed(2)}]`;
+                } else {
+                    el.style.display = 'none';
+                }
+            });
+
+            // 清理多余的
+            while(labelsContainer.children.length > targets.length) {
+                labelsContainer.removeChild(labelsContainer.lastChild);
+            }
+        }
+
+        // -------------------------------------------------------------------------
+        // 6. UI 控制器 (Tweakpane)
+        // -------------------------------------------------------------------------
+        function initUI() {
+            const pane = new Pane({ title: 'System Control' });
+
+            // 视觉外观
+            const f1 = pane.addFolder({ title: 'Visuals' });
+            f1.addBinding(CONFIG, 'bodyColor', { label: 'Body Color' }).on('change', (ev) => {
+                bodyParticles.material.color.set(ev.value);
+            });
+            f1.addBinding(CONFIG, 'skeletonColor', { label: 'Skeleton Color' }).on('change', (ev) => {
+                skeletonLines.material.color.set(ev.value);
+            });
+            f1.addBinding(CONFIG, 'particleSize', { min: 0.01, max: 0.5, label: 'Particle Size' }).on('change', (ev) => {
+                bodyParticles.material.size = ev.value;
+            });
+            f1.addBinding(CONFIG, 'bgColor', { label: 'Background' }).on('change', (ev) => {
+                scene.background.set(ev.value);
+                scene.fog.color.set(ev.value);
+            });
+
+            // 调试与显示
+            const f2 = pane.addFolder({ title: 'Overlay & Debug' });
+            f2.addBinding(CONFIG, 'showCamera', { label: 'Camera Feed' }).on('change', (ev) => {
+                videoElement.style.display = ev.value ? 'block' : 'none';
+            });
+            f2.addBinding(CONFIG, 'showSkeleton', { label: 'Show Skeleton' });
+            f2.addBinding(CONFIG, 'showLabels', { label: 'Show Data' });
+        }
+
+        // -------------------------------------------------------------------------
+        // 7. 渲染循环
+        // -------------------------------------------------------------------------
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+
+            // 背景粒子轻微旋转
+            if(bgParticles) {
+                bgParticles.rotation.y += 0.0005;
+            }
+
+            // 身体粒子更新
+            updateBody();
+
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+    </script>
+</body>
+</html>
