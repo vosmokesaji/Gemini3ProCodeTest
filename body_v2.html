@@ -114,6 +114,8 @@
         const videoElement = document.getElementById('input_video');
         const loadingElement = document.getElementById('loading');
 
+        let animationFrameId = null; // 用于追踪和取消循环
+
         // --- 初始化入口 ---
         async function init() {
             initThree();
@@ -377,38 +379,73 @@
 
         // 启动特定摄像头的函数
         function startCamera(deviceId) {
-            if (cameraUtils) {
-                cameraUtils.stop(); // 停止旧流
+            // 1. 停止之前的循环和流
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+            
+            if (videoElement.srcObject) {
+                const tracks = videoElement.srcObject.getTracks();
+                tracks.forEach(track => track.stop());
+                videoElement.srcObject = null;
             }
 
-            // 构建约束条件
+            loadingElement.style.display = 'block';
+            loadingElement.innerHTML = "正在连接摄像头...<br>(iPhone 可能需要几秒钟)";
+
+            // 2. 构建约束
             const constraints = {
-                width: { ideal: 640 },
-                height: { ideal: 480 },
-                deviceId: deviceId ? { exact: deviceId } : undefined
+                video: {
+                    width: { ideal: 1280 }, // 尝试请求更高分辨率
+                    height: { ideal: 720 },
+                    deviceId: deviceId ? { exact: deviceId } : undefined
+                }
             };
 
-            // 使用 MediaPipe 的 Camera Utils 或者 原生 getUserMedia
-            // 这里为了方便切换 DeviceID，我们手动控制 video 标签的流，然后传给 Pose
-            
-            navigator.mediaDevices.getUserMedia({ video: constraints }).then((stream) => {
+            // 3. 获取新流
+            navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
                 videoElement.srcObject = stream;
-                videoElement.play();
-                loadingElement.style.display = 'none';
-
-                // 简单的帧循环将视频送入 AI
-                const sendFrame = async () => {
-                    if(!videoElement.paused && !videoElement.ended) {
-                        await pose.send({ image: videoElement });
-                    }
-                    requestAnimationFrame(sendFrame);
+                
+                // 关键修复：不要立即 play，也不要立即循环
+                // 等待元数据加载，确认视频有宽高
+                videoElement.onloadedmetadata = () => {
+                    videoElement.play().then(() => {
+                        console.log("摄像头画面已播放，分辨率:", videoElement.videoWidth, videoElement.videoHeight);
+                        loadingElement.style.display = 'none';
+                        
+                        // 启动检测循环
+                        processVideo();
+                    }).catch(e => {
+                        console.error("视频播放失败:", e);
+                    });
                 };
-                sendFrame();
 
             }).catch(err => {
                 console.error("Stream Start Error:", err);
-                loadingElement.innerHTML = "摄像头启动失败: " + err.name;
+                loadingElement.innerHTML = "无法启动摄像头:<br>" + err.name;
             });
+        }
+
+        // 独立的循环处理函数，增加安全检查
+        async function processVideo() {
+            // 安全检查：如果视频暂停、结束或没有数据，不发送给 AI，防止崩溃
+            if (videoElement.paused || videoElement.ended || videoElement.readyState < 2) {
+                // 即使没准备好，也保持循环检查
+                animationFrameId = requestAnimationFrame(processVideo);
+                return;
+            }
+
+            // 只有当 Pose 模型加载完成且视频有数据时才发送
+            if (pose) {
+                try {
+                    await pose.send({ image: videoElement });
+                } catch (error) {
+                    console.warn("MediaPipe 处理错误 (通常在切换时忽略):", error);
+                }
+            }
+
+            animationFrameId = requestAnimationFrame(processVideo);
         }
 
         function onPoseResults(results) {
